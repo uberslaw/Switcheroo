@@ -58,6 +58,8 @@ from app.main import app
 from app.models import ROLE_CS, Port, Switch, User, UserSwitchPermission
 from app.seed import seed
 
+VLAN_REASON = "Need guest VLAN for visitor laptop"
+
 
 @pytest.fixture(autouse=True)
 def _clean_db():

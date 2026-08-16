@@ -18,13 +18,16 @@ def test_workspace_poll_does_not_wrap_vlan_select():
     assert "every 2s" not in workspace_open
     assert "hx-trigger" not in workspace_open
     assert 'name="vlan_id"' in pane
+    assert 'name="reason"' in pane
     assert 'id="pane-actions"' in pane
     assert 'id="pane-status"' in pane
     status_block = pane.split('id="pane-status"')[1].split('id="pane-actions"')[0]
     actions_block = pane.split('id="pane-actions"')[1]
     assert "every 2s" in status_block
     assert 'name="vlan_id"' not in status_block
+    assert 'name="reason"' not in status_block
     assert 'name="vlan_id"' in actions_block
+    assert 'name="reason"' in actions_block
     assert "every 2s" not in actions_block
 
 
@@ -51,7 +54,9 @@ def test_selected_port_page_keeps_select_outside_poll_target(client):
     actions = html.split('id="pane-actions"')[1].split("id=\"pane-admin\"")[0]
     assert "every 2s" in status
     assert 'name="vlan_id"' not in status
+    assert 'name="reason"' not in status
     assert 'name="vlan_id"' in actions
+    assert 'name="reason"' in actions
     assert "every 2s" not in actions
 
 
@@ -60,4 +65,5 @@ def test_pane_status_partial_has_no_select(client):
     response = client.get("/partials/switches/1/pane-status?port=1")
     assert response.status_code == 200
     assert 'name="vlan_id"' not in response.text
+    assert 'name="reason"' not in response.text
     assert "Connected for" in response.text or "Not connected" in response.text

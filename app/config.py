@@ -64,6 +64,9 @@ class Settings:
     servicenow_dry_run: bool
     servicenow_instance_url: str
     servicenow_table: str
+    servicenow_ritm_table: str
+    servicenow_req_table: str
+    servicenow_catalog_item_sys_id: str
     servicenow_username: str
     servicenow_password: str
     servicenow_assignment_group: str
@@ -181,6 +184,9 @@ def get_settings() -> Settings:
             os.getenv("SERVICENOW_INSTANCE") or os.getenv("SERVICENOW_INSTANCE_URL") or ""
         ).strip().rstrip("/"),
         servicenow_table=(os.getenv("SERVICENOW_TABLE") or "incident").strip() or "incident",
+        servicenow_ritm_table=(os.getenv("SERVICENOW_RITM_TABLE") or "sc_req_item").strip() or "sc_req_item",
+        servicenow_req_table=(os.getenv("SERVICENOW_REQ_TABLE") or "sc_request").strip() or "sc_request",
+        servicenow_catalog_item_sys_id=(os.getenv("SERVICENOW_CATALOG_ITEM_SYS_ID") or "").strip(),
         servicenow_username=(os.getenv("SERVICENOW_USERNAME") or "").strip(),
         servicenow_password=os.getenv("SERVICENOW_PASSWORD") or "",
         servicenow_assignment_group=(os.getenv("SERVICENOW_ASSIGNMENT_GROUP") or "").strip(),

@@ -28,6 +28,7 @@ from app.models import (
     utcnow,
 )
 from app.services.auto_approve import match_auto_approve
+from app.services.identity import current_windows_account
 from app.services.switch_service import apply_details
 
 log = logging.getLogger("switcheroo.requests")
@@ -55,15 +56,19 @@ def create_request(
     port: Port,
     request_type: str,
     vlan_id: Optional[int] = None,
+    reason: Optional[str] = None,
 ) -> ChangeRequest:
     if request_type not in {REQUEST_VLAN, REQUEST_BOUNCE, REQUEST_NO_SHUTDOWN}:
         raise RequestError(f"Unknown request type: {request_type}")
     if port.switch is not None and not port.switch.monitoring_enabled:
         raise RequestError("Monitoring is paused for this switch. Networks can resume it under Inventory.")
     vlan_name = None
+    cleaned_reason = (reason or "").strip()
     if request_type == REQUEST_VLAN:
         if vlan_id is None:
             raise RequestError("VLAN change requires a VLAN number")
+        if not cleaned_reason:
+            raise RequestError("A reason is required for a VLAN change")
         catalog = db.scalar(
             select(SwitchVlan).where(SwitchVlan.switch_id == port.switch_id, SwitchVlan.vlan_id == vlan_id)
         )
@@ -77,6 +82,8 @@ def create_request(
         requested_vlan_name=vlan_name,
         from_vlan_id=port.vlan_id if request_type == REQUEST_VLAN else None,
         from_vlan_name=port.vlan_name if request_type == REQUEST_VLAN else None,
+        reason=cleaned_reason or None,
+        windows_account=current_windows_account(),
         status=STATUS_PENDING,
     )
     db.add(req)
@@ -235,12 +242,26 @@ def _teams_notify_released(req: ChangeRequest, actor: User) -> None:
         log.warning("Teams release notify failed for request %s: %s", req.id, exc)
 
 
-def _sn_after_decision(req: ChangeRequest, approved: bool) -> None:
-    if req.request_type != REQUEST_VLAN:
-        return
+def _decision_work_notes(req: ChangeRequest, approved: bool) -> str:
     note = req.review_note or ("Approved and executed in Switcheroo." if approved else "Rejected in Switcheroo.")
     if req.status == STATUS_FAILED:
         note += f" Switch write failed: {req.error_message}"
+    extras: list[str] = []
+    if req.requester is not None:
+        extras.append(f"Switcheroo user: {req.requester.username}")
+    if req.windows_account:
+        extras.append(f"Windows account: {req.windows_account}")
+    if req.reason:
+        extras.append(f"Change reason: {req.reason}")
+    if extras:
+        note = note + "\n" + "\n".join(extras)
+    return note
+
+
+def _sn_after_decision(req: ChangeRequest, approved: bool) -> None:
+    if req.request_type != REQUEST_VLAN:
+        return
+    note = _decision_work_notes(req, approved)
     try:
         if approved and req.status == STATUS_EXECUTED:
             servicenow.resolve_ticket(req, note)
@@ -272,14 +293,36 @@ def sync_servicenow_tickets(db: Session) -> int:
         req = db.get(ChangeRequest, req_id)
         if req is None:
             continue
-        number = row.get("number")
-        sys_id = row.get("sys_id")
+        number = row.get("number") or row.get("ritm_number")
+        req_number = row.get("req_number") or row.get("request_number") or row.get("request.number")
+        request_ref = row.get("request")
+        if not req_number and isinstance(request_ref, dict):
+            req_number = request_ref.get("display_value") or request_ref.get("number")
+        sys_id = row.get("sys_id") or row.get("ritm_sys_id")
+        req_sys_id = row.get("req_sys_id")
+        if not req_sys_id and isinstance(request_ref, dict):
+            req_sys_id = request_ref.get("value") or request_ref.get("sys_id")
+        elif not req_sys_id and isinstance(request_ref, str) and request_ref and not request_ref.startswith("REQ"):
+            req_sys_id = request_ref
         changed = False
-        if number and req.servicenow_ticket != number:
-            req.servicenow_ticket = number
+        if number and req.sn_ritm_number != number:
+            req.sn_ritm_number = number
+            changed = True
+        if req_number and req.sn_req_number != req_number:
+            req.sn_req_number = req_number
+            changed = True
+        primary = req.sn_ritm_number or req.sn_req_number or number
+        if primary and req.servicenow_ticket != primary:
+            req.servicenow_ticket = primary
             changed = True
         if sys_id and not req.servicenow_sys_id:
             req.servicenow_sys_id = sys_id
+            changed = True
+        if sys_id and not req.sn_ritm_sys_id:
+            req.sn_ritm_sys_id = sys_id
+            changed = True
+        if req_sys_id and not req.sn_req_sys_id:
+            req.sn_req_sys_id = req_sys_id
             changed = True
         if not req.servicenow_correlation_id:
             req.servicenow_correlation_id = corr

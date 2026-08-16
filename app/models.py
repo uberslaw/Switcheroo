@@ -151,10 +151,16 @@ class ChangeRequest(Base):
     status: Mapped[str] = mapped_column(String(32), default=STATUS_PENDING, index=True)
     review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    windows_account: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     servicenow_ticket: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     servicenow_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     servicenow_sys_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     servicenow_correlation_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
+    sn_req_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    sn_ritm_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    sn_req_sys_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    sn_ritm_sys_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     auto_approved: Mapped[bool] = mapped_column(default=False)
     auto_approve_reason: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     acknowledged_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -168,6 +174,17 @@ class ChangeRequest(Base):
     acknowledged_by: Mapped[Optional[User]] = relationship(foreign_keys=[acknowledged_by_id])
     switch: Mapped[Switch] = relationship()
     port: Mapped[Port] = relationship()
+
+    @property
+    def sn_primary(self) -> Optional[str]:
+        """RITM first — that is the number CS/Networks quote — then REQ, then legacy ticket."""
+        return self.sn_ritm_number or self.sn_req_number or self.servicenow_ticket
+
+    @property
+    def sn_secondary(self) -> Optional[str]:
+        if self.sn_ritm_number and self.sn_req_number:
+            return self.sn_req_number
+        return None
 
 
 class AutoApprovePolicy(Base):

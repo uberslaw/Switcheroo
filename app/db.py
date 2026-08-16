@@ -69,6 +69,12 @@ def _migrate_sqlite() -> None:
             "auto_approve_reason": "VARCHAR(256)",
             "acknowledged_by_id": "INTEGER",
             "acknowledged_at": "DATETIME",
+            "reason": "TEXT",
+            "windows_account": "VARCHAR(256)",
+            "sn_req_number": "VARCHAR(64)",
+            "sn_ritm_number": "VARCHAR(64)",
+            "sn_req_sys_id": "VARCHAR(64)",
+            "sn_ritm_sys_id": "VARCHAR(64)",
         }
         if req_names:
             for col, typ in alters.items():

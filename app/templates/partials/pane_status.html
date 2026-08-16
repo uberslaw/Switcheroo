@@ -33,8 +33,8 @@
         <span class="mono">{{ v.pending_vlan.requested_vlan_id }}</span>
         {{ v.pending_vlan.requested_vlan_name or "" }}
         <span class="vlan-req">REQ</span>
-        {% if v.pending_vlan.servicenow_ticket %}
-        <span class="vlan-sn mono">{{ v.pending_vlan.servicenow_ticket }}</span>
+        {% if v.pending_vlan.sn_primary %}
+        <span class="vlan-sn mono">{{ v.pending_vlan.sn_ritm_number or v.pending_vlan.sn_primary }}</span>
         {% endif %}
       </span>
       {% endif %}

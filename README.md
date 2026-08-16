@@ -14,7 +14,7 @@ This is a **lab-first v1**. Default driver is an in-process simulator so the sit
 | OS | Windows PowerShell (commands below). Linux/macOS work with the same `python -m` flow. |
 | Network | First run binds **127.0.0.1:8080** only. No campus switches, RESTCONF, SSH, or ServiceNow are required. |
 | Data | SQLite + logs under `data\` (created at startup). The process must be able to write that folder. |
-| Auth | Local username/password. **Not Entra SSO.** Seeded lab passwords are public in this README. |
+| Auth | Local username/password. **Not Entra SSO.** Seeded lab passwords are public in this README. Each VLAN ticket also records the **Windows account of the process running Switcheroo** (`USERDOMAIN\USERNAME`). Fine for a local POC on a CS/Networks PC; a shared server would need SSO, or the field would be the service account. |
 | Hardware | `SWITCHEROO_DRIVER=simulator` by default. Real 9300s need RESTCONF (preferred), SSH/Netmiko fallback, optional SNMP, and a **dedicated TACACS or local user** — never a personal login. |
 
 Lab-only defaults that must change before any shared/internal deploy:
@@ -112,14 +112,20 @@ Real-box checklist (not done by this app):
 
 Switcheroo is where people click. ServiceNow is the ticket log. **Only VLAN change requests** create SN records (not bounce, refresh, or troubleshoot).
 
+VLAN changes require a **reason** (right-hand port pane textarea). Empty/whitespace is rejected — no ChangeRequest and no ServiceNow ticket, including when auto-approve would otherwise fire.
+
+Each ticket stores the Switcheroo username, the **Windows account** of the process (`USERDOMAIN\USERNAME`, fallback `getpass.getuser()`), and the reason. Those go into the SN description and work notes. The Windows account is the identity of the **process running Switcheroo** — fine for a local POC on someone’s PC. Later, a shared server would need SSO, or this field would show the service account.
+
+Arup workflow is catalog-style. The number people quote is the **RITM**, then the parent **REQ**. The Networks approval queue, `/requests`, and the pending VLAN pane show RITM first.
+
 | Mode | Env | Behaviour |
 | --- | --- | --- |
-| Dry-run (default) | `SERVICENOW_ENABLED=false` and/or `SERVICENOW_DRY_RUN=true` | Local request + `SN-DRY-RUN` ticket. Payload written to `data/servicenow-dryrun/`. **No HTTP** to arup.service-now.com. |
-| Live | `SERVICENOW_ENABLED=true`, `SERVICENOW_DRY_RUN=false`, username + password set | `POST/GET/PATCH` Table API on `SERVICENOW_TABLE` (default `incident`). |
+| Dry-run (default) | `SERVICENOW_ENABLED=false` and/or `SERVICENOW_DRY_RUN=true` | Local request + visible `RITM-DRY-RUN` / `REQ-DRY-RUN`. Payload written to `data/servicenow-dryrun/`. **No HTTP** to arup.service-now.com. |
+| Live | `SERVICENOW_ENABLED=true`, `SERVICENOW_DRY_RUN=false`, username + password set | Prefer Table API `sc_req_item` + parent `sc_request`. If `SERVICENOW_CATALOG_ITEM_SYS_ID` is set, may `order_now` that catalog item. `SERVICENOW_TABLE` (default `incident`) is fallback only. |
 
-If live mode is on and credentials are missing, startup **fails fast** and does not call ServiceNow anonymously.
+If live mode is on and credentials are missing, startup **fails fast** and does not call ServiceNow anonymously. If the catalog item sys_id is unset, the SN team must provide the VLAN-change catalog item before `order_now` can be used.
 
-Give this to ServiceNow / IAM: **[docs/servicenow-poc.md](docs/servicenow-poc.md)** (integration user, sample JSON, poll query, resolve/cancel fields).
+Give this to ServiceNow / IAM: **[docs/servicenow-poc.md](docs/servicenow-poc.md)** (integration user, RITM/REQ sample JSON, poll query, resolve/cancel fields).
 
 Review all requests (CS sees permitted offices/switches only): **http://127.0.0.1:8080/requests**
 

@@ -596,6 +596,18 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
 }
 .pane-actions { display: grid; gap: 0.45rem; }
 .pane-actions .btn, .pane-admin .btn { width: 100%; }
+.pane-actions textarea {
+  width: 100%;
+  min-height: 4.2rem;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.sn-ritm {
+  font-family: var(--mono);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.reason-text { max-width: 22rem; white-space: pre-wrap; }
 .pane-admin {
   margin-top: 0.8rem;
   padding-top: 0.7rem;

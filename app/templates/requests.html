@@ -56,14 +56,16 @@
     <tr>
       <th>When</th>
       <th>Who</th>
+      <th>Windows account</th>
       <th>Office</th>
       <th>Switch / port</th>
       <th>Type</th>
       <th>From → to</th>
+      <th>Reason</th>
       <th>Status</th>
       <th>Decided by</th>
       <th>Decided</th>
-      <th>ServiceNow</th>
+      <th>RITM / REQ</th>
       {% if user.role == 'networks' %}<th>Decide</th>{% endif %}
     </tr>
   </thead>
@@ -72,6 +74,7 @@
     <tr class="request-row" id="request-{{ r.id }}">
       <td>{{ r.created_at|dt }}</td>
       <td>{{ r.requester.username }}</td>
+      <td class="mono">{{ r.windows_account or "—" }}</td>
       <td>{{ r.switch.location or "—" }}</td>
       <td>
         {% if r.status == 'pending' and user.role == 'networks' %}
@@ -95,6 +98,7 @@
         —
         {% endif %}
       </td>
+      <td class="reason-text">{{ r.reason or "—" }}</td>
       <td>
         {% if r.auto_approved %}
         <span class="source source-auto">Auto-approved</span>
@@ -116,7 +120,17 @@
         {% else %}—{% endif %}
       </td>
       <td>{{ r.reviewed_at|dt if r.reviewed_at else "—" }}</td>
-      <td class="mono">{{ r.servicenow_ticket or "—" }}</td>
+      <td class="sn-ticket">
+        {% if r.sn_ritm_number %}
+        <div class="sn-ritm">{{ r.sn_ritm_number }}</div>
+        {% endif %}
+        {% if r.sn_req_number %}
+        <div class="muted">{{ r.sn_req_number }}</div>
+        {% endif %}
+        {% if not r.sn_ritm_number and not r.sn_req_number %}
+        {{ r.servicenow_ticket or "—" }}
+        {% endif %}
+      </td>
       {% if user.role == 'networks' %}
       <td>
         {% if r.status == 'pending' %}
@@ -146,7 +160,7 @@
       {% endif %}
     </tr>
     {% else %}
-    <tr><td colspan="{% if user.role == 'networks' %}11{% else %}10{% endif %}" class="muted">No requests match these filters.</td></tr>
+    <tr><td colspan="{% if user.role == 'networks' %}13{% else %}12{% endif %}" class="muted">No requests match these filters.</td></tr>
     {% endfor %}
   </tbody>
 </table>
