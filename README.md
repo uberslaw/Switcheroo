@@ -173,10 +173,11 @@ data/           sqlite + switcheroo.log (created at runtime, not committed)
 ```
 
 Give this to Cyber: **[docs/security.md](docs/security.md)** (bind address, hashing, encrypted device secrets, CSRF, cookies, residual risk).
+Cursor agents: **[`.cursor/skills/hardening/SKILL.md`](.cursor/skills/hardening/SKILL.md)** (checklist of controls people usually miss).
 
 ## Gaps (v1)
 
 - Entra ID / SSO is not implemented (local users only).
 - ServiceNow live Table API is implemented but **off** until an integration user exists. Arup incident `state` / `close_code` values are unverified.
 - Real 9300 YANG paths may need site-specific adjustment once RESTCONF is pointed at a lab switch.
-- No HTTPS terminator in-process; put one in front if you bind beyond loopback. Set `SWITCHEROO_REQUIRE_HARDENED=true` before a shared deploy.
+- No HTTPS terminator in-process; put one in front if you bind beyond loopback. Set `SWITCHEROO_REQUIRE_HARDENED=true` before a shared deploy (that also blocks well-known lab users on an empty database).

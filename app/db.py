@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
+from app.filesec import restrict_private_file, sqlite_filesystem_path
 
 
 class Base(DeclarativeBase):
@@ -43,6 +44,9 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _migrate_sqlite()
+    db_path = sqlite_filesystem_path(get_settings().database_url)
+    if db_path is not None:
+        restrict_private_file(db_path)
 
 
 def _migrate_sqlite() -> None:

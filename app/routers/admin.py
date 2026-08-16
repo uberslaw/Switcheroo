@@ -5,7 +5,8 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import hash_password, require_networks, require_user, safe_next_path
+from app.audit import audit
+from app.auth import hash_password, password_meets_policy, require_networks, require_user, safe_next_path
 from app.crypto import store_secret
 from app.db import get_db
 from app.drivers.simulator import simulator
@@ -420,6 +421,9 @@ def user_create(
     if db.scalar(select(User).where(User.username == username.strip())):
         flash(request, "Username already exists.", "error")
         return RedirectResponse("/admin/permissions", status_code=303)
+    if not password_meets_policy(password):
+        flash(request, "Password must be at least 10 characters.", "error")
+        return RedirectResponse("/admin/permissions", status_code=303)
     db.add(
         User(
             username=username.strip(),
@@ -429,5 +433,6 @@ def user_create(
         )
     )
     db.commit()
+    audit("user_created", username=username.strip()[:64], role=role, actor=user.username)
     flash(request, f"Created user {username.strip()}.", "ok")
     return RedirectResponse("/admin/permissions", status_code=303)

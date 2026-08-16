@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -91,6 +92,9 @@ class Settings:
     session_max_age: int
     trust_x_forwarded_for: bool
     require_hardened: bool
+    allowed_hosts: tuple[str, ...]
+    bootstrap_username: str
+    bootstrap_password: str
 
     @property
     def servicenow_live(self) -> bool:
@@ -103,6 +107,21 @@ class Settings:
     @property
     def bind_is_all_interfaces(self) -> bool:
         return self.host in {"0.0.0.0", "::"}
+
+    @property
+    def show_lab_credentials(self) -> bool:
+        """Login page / stdout may print lab passwords only in first-run lab mode."""
+        return (not self.require_hardened) and self.secret_key == LAB_SECRET_KEY
+
+    @property
+    def trusted_hosts_enabled(self) -> bool:
+        return "*" not in self.allowed_hosts
+
+    @property
+    def public_hostname(self) -> str:
+        if not self.public_url:
+            return ""
+        return (urlparse(self.public_url).hostname or "").strip().lower()
 
 
 def get_settings() -> Settings:
@@ -137,6 +156,7 @@ def get_settings() -> Settings:
     secret = os.getenv("SWITCHEROO_SECRET_KEY") or LAB_SECRET_KEY
     public_url = (os.getenv("SWITCHEROO_PUBLIC_URL") or "").strip().rstrip("/")
     cookie_secure = _as_bool(os.getenv("SWITCHEROO_COOKIE_SECURE"), public_url.startswith("https://"))
+    require_hardened = _as_bool(os.getenv("SWITCHEROO_REQUIRE_HARDENED"), False)
 
     return Settings(
         testing=testing,
@@ -186,5 +206,28 @@ def get_settings() -> Settings:
         cookie_secure=cookie_secure,
         session_max_age=max(300, min(86400, _as_int(os.getenv("SWITCHEROO_SESSION_MAX_AGE"), 28800))),
         trust_x_forwarded_for=_as_bool(os.getenv("SWITCHEROO_TRUST_X_FORWARDED_FOR"), False),
-        require_hardened=_as_bool(os.getenv("SWITCHEROO_REQUIRE_HARDENED"), False),
+        require_hardened=require_hardened,
+        allowed_hosts=_parse_allowed_hosts(
+            os.getenv("SWITCHEROO_ALLOWED_HOSTS"),
+            testing=testing,
+            require_hardened=require_hardened,
+        ),
+        bootstrap_username=(os.getenv("SWITCHEROO_BOOTSTRAP_USERNAME") or "networks").strip() or "networks",
+        bootstrap_password=os.getenv("SWITCHEROO_BOOTSTRAP_PASSWORD") or "",
     )
+
+
+def _parse_allowed_hosts(
+    raw: str | None, *, testing: bool, require_hardened: bool
+) -> tuple[str, ...]:
+    """Lab default is '*' (TrustedHost off). Hardened deploys must set an explicit list."""
+    if raw is None or raw.strip() == "":
+        if require_hardened:
+            return ()
+        if testing:
+            return ("testserver", "test", "localhost", "127.0.0.1", "[::1]")
+        return ("*",)
+    hosts = tuple(part.strip() for part in raw.split(",") if part.strip())
+    if testing and "*" not in hosts and "testserver" not in {h.lower() for h in hosts}:
+        hosts = hosts + ("testserver", "test")
+    return hosts

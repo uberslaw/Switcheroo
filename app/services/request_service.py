@@ -6,6 +6,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.audit import audit
 from app.drivers.factory import get_driver
 from app.drivers.servicenow import ServiceNowError, servicenow
 from app.drivers.teams import TeamsError, teams
@@ -86,6 +87,13 @@ def create_request(
         approve_request(db, req, reviewer=None, note=match.work_notes, auto_reason=match.label)
     elif request_type == REQUEST_VLAN:
         _teams_notify_pending(req)
+    audit(
+        "request_created",
+        request_id=req.id,
+        request_type=request_type,
+        username=requester.username,
+        auto_approved=bool(match),
+    )
     return req
 
 
@@ -143,6 +151,13 @@ def approve_request(
     req.auto_approve_reason = auto_reason
     execute_request(db, req)
     _sn_after_decision(req, approved=True)
+    audit(
+        "request_approved",
+        request_id=req.id,
+        username=reviewer.username if reviewer is not None else "auto",
+        auto=bool(auto_reason),
+        status=req.status,
+    )
     return req
 
 
@@ -156,6 +171,7 @@ def reject_request(db: Session, req: ChangeRequest, reviewer: User, note: str) -
     req.review_note = note.strip()
     req.reviewed_at = utcnow()
     _sn_after_decision(req, approved=False)
+    audit("request_rejected", request_id=req.id, username=reviewer.username)
     return req
 
 
@@ -171,6 +187,7 @@ def acknowledge_request(db: Session, req: ChangeRequest, user: User) -> ChangeRe
     req.acknowledged_by_id = user.id
     req.acknowledged_at = utcnow()
     _teams_notify_acknowledged(req, user)
+    audit("request_acknowledged", request_id=req.id, username=user.username)
     return req
 
 
@@ -182,6 +199,7 @@ def release_acknowledgement(db: Session, req: ChangeRequest, user: User) -> Chan
     req.acknowledged_by_id = None
     req.acknowledged_at = None
     _teams_notify_released(req, user)
+    audit("request_ack_released", request_id=req.id, username=user.username)
     return req
 
 

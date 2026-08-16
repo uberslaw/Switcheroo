@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth import hash_password
+from app.auth import BOOTSTRAP_PASSWORD_LENGTH, hash_password, password_meets_policy
+from app.config import get_settings
 from app.drivers.simulator import SimPort, simulator
 from app.models import (
     ROLE_CS,
@@ -19,6 +20,8 @@ from app.models import (
     UserSwitchPermission,
     utcnow,
 )
+
+from app.prereq import PrerequisiteError
 
 log = logging.getLogger("switcheroo.seed")
 
@@ -157,7 +160,12 @@ def _port_plan(switch_name: str) -> list[dict]:
 
 
 def seed(db: Session) -> dict[str, int]:
-    """Idempotent lab seed. Re-run does not duplicate users or switches."""
+    """Idempotent lab seed. Hardened mode never creates the published lab passwords."""
+    if get_settings().require_hardened:
+        created = _bootstrap_admin(db)
+        _warn_lab_usernames(db)
+        return {"users": created, "switches": 0}
+
     created_users = 0
     created_switches = 0
 
@@ -228,6 +236,63 @@ def seed(db: Session) -> dict[str, int]:
 
     db.commit()
     return {"users": created_users, "switches": created_switches}
+
+
+def ensure_hardened_users(db: Session) -> None:
+    """Fail startup if hardened mode would leave the site with nobody who can sign in."""
+    settings = get_settings()
+    if not settings.require_hardened:
+        return
+    n = db.scalar(select(func.count(User.id))) or 0
+    if n == 0:
+        raise PrerequisiteError(
+            "SWITCHEROO_REQUIRE_HARDENED=true and there are no users. "
+            "Set SWITCHEROO_BOOTSTRAP_USERNAME and SWITCHEROO_BOOTSTRAP_PASSWORD "
+            f"({BOOTSTRAP_PASSWORD_LENGTH}+ characters) for the first Networks admin, "
+            "then change it under Access. Lab users networks/cs are not created in "
+            "hardened mode. See docs/security.md."
+        )
+
+
+def _bootstrap_admin(db: Session) -> int:
+    settings = get_settings()
+    password = settings.bootstrap_password
+    username = settings.bootstrap_username
+    if not password:
+        return 0
+    if not password_meets_policy(password, minimum=BOOTSTRAP_PASSWORD_LENGTH):
+        raise PrerequisiteError(
+            f"SWITCHEROO_BOOTSTRAP_PASSWORD must be at least {BOOTSTRAP_PASSWORD_LENGTH} "
+            "characters. See docs/security.md."
+        )
+    existing = db.scalar(select(User).where(User.username == username))
+    if existing is not None:
+        return 0
+    db.add(
+        User(
+            username=username,
+            password_hash=hash_password(password),
+            role=ROLE_NETWORKS,
+            display_name="Bootstrap admin",
+        )
+    )
+    db.commit()
+    log.warning(
+        "Created bootstrap Networks user %s. Change this password under Access. "
+        "The password is not logged.",
+        username,
+    )
+    return 1
+
+
+def _warn_lab_usernames(db: Session) -> None:
+    for name in ("networks", "cs"):
+        if db.scalar(select(User).where(User.username == name)) is not None:
+            log.warning(
+                "Hardened mode: user %s already exists. Confirm this is not the "
+                "published lab password from the README.",
+                name,
+            )
 
 
 def _backfill_link_uptime(switch: Switch) -> None:

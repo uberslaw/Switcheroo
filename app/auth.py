@@ -17,6 +17,10 @@ SCRYPT_N = 2**14
 SCRYPT_R = 8
 SCRYPT_P = 1
 SCRYPT_DKLEN = 32
+MIN_PASSWORD_LENGTH = 10
+BOOTSTRAP_PASSWORD_LENGTH = 12
+
+_DUMMY_HASH: str | None = None
 
 
 def hash_password(password: str) -> str:
@@ -64,9 +68,22 @@ def verify_password(password: str, stored: str) -> bool:
     return False
 
 
+def password_meets_policy(password: str, *, minimum: int = MIN_PASSWORD_LENGTH) -> bool:
+    return len(password) >= minimum
+
+
+def _dummy_password_hash() -> str:
+    """Same scrypt cost as a real user so missing usernames are not faster to probe."""
+    global _DUMMY_HASH
+    if _DUMMY_HASH is None:
+        _DUMMY_HASH = hash_password("switcheroo-dummy-password-not-a-real-user")
+    return _DUMMY_HASH
+
+
 def authenticate(db: Session, username: str, password: str) -> Optional[User]:
     user = db.scalar(select(User).where(User.username == username))
     if user is None or not user.is_active:
+        verify_password(password, _dummy_password_hash())
         return None
     if not verify_password(password, user.password_hash):
         return None

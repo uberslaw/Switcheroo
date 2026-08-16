@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uvicorn
 
-from app.config import LAB_SECRET_KEY, get_settings
+from app.config import get_settings
 from app.prereq import check_prerequisites
 
 
@@ -16,7 +16,7 @@ def main() -> None:
         )
     print(f"Switcheroo listening on http://{settings.host}:{settings.port}")
     print(f"Logs: {settings.log_file}")
-    if settings.secret_key == LAB_SECRET_KEY:
+    if settings.show_lab_credentials:
         print("Lab logins: networks / networks  and  cs / cs  (not for production)")
     uvicorn.run(
         "app.main:app",

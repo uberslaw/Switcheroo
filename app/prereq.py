@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from app.config import Settings
+from app.filesec import restrict_private_dir, sqlite_filesystem_path
 
 MIN_PYTHON = (3, 12)
 
@@ -25,6 +26,7 @@ def check_prerequisites(settings: Settings) -> None:
     data_dir: Path = settings.data_dir
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
+        restrict_private_dir(data_dir)
     except OSError as exc:
         raise PrerequisiteError(
             f"Cannot create data directory '{data_dir}': {exc}. "
@@ -134,18 +136,41 @@ def _check_hardening(settings: Settings) -> None:
             "SWITCHEROO_REQUIRE_HARDENED=true requires SWITCHEROO_COOKIE_SECURE=true "
             "(or an https SWITCHEROO_PUBLIC_URL) so session cookies are not sent over HTTP."
         )
+    if not settings.allowed_hosts or "*" in settings.allowed_hosts:
+        raise PrerequisiteError(
+            "SWITCHEROO_REQUIRE_HARDENED=true requires SWITCHEROO_ALLOWED_HOSTS "
+            "(comma-separated hostnames, no wildcard). Include the hostname from "
+            "SWITCHEROO_PUBLIC_URL. See docs/security.md."
+        )
+    public_host = settings.public_hostname
+    if public_host and not _host_allowed(public_host, settings.allowed_hosts):
+        raise PrerequisiteError(
+            "SWITCHEROO_REQUIRE_HARDENED=true requires SWITCHEROO_ALLOWED_HOSTS to include "
+            f"'{public_host}' from SWITCHEROO_PUBLIC_URL. See docs/security.md."
+        )
+
+
+def _host_allowed(hostname: str, allowed: tuple[str, ...]) -> bool:
+    host = hostname.lower().rstrip(".")
+    for pattern in allowed:
+        item = pattern.lower().rstrip(".")
+        if item == "*":
+            return True
+        if item.startswith("*."):
+            suffix = item[1:]
+            if host == item[2:] or host.endswith(suffix):
+                return True
+        elif host == item:
+            return True
+    return False
 
 
 def _check_sqlite(url: str) -> None:
-    if url in {"sqlite:///:memory:", "sqlite://"}:
+    from app.filesec import restrict_private_file
+
+    path = sqlite_filesystem_path(url)
+    if path is None:
         return
-    prefix = "sqlite:///"
-    if not url.startswith(prefix):
-        return
-    raw = url[len(prefix) :]
-    if raw == ":memory:":
-        return
-    path = Path(raw)
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         conn = sqlite3.connect(str(path))
@@ -156,3 +181,4 @@ def _check_sqlite(url: str) -> None:
             f"SQLite file '{path}' is not usable: {exc}. "
             "Set SWITCHEROO_DATABASE_URL or SWITCHEROO_DATA_DIR to a writable location."
         ) from exc
+    restrict_private_file(path)

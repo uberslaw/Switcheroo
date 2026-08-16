@@ -7,8 +7,10 @@ from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.audit import audit
 from app.auth import authenticate, require_networks, require_user, safe_next_path, user_from_request
 from app.config import get_settings
+from app.csrf import ensure_csrf_token
 from app.db import get_db
 from app.rate_limit import clear_login_failures, client_ip, login_is_blocked, record_login_failure
 from app.models import (
@@ -117,15 +119,21 @@ def login_submit(
     user = authenticate(db, username.strip(), password)
     if user is None:
         record_login_failure(ip)
+        audit("login_failure", username=username.strip()[:64], ip=ip)
         flash(request, "Unknown user or bad password.", "error")
         return render(request, "login.html", user=None, next_path="" if dest == "/" else dest, status_code=401)
     clear_login_failures(ip)
+    request.session.clear()
     request.session["user_id"] = user.id
+    ensure_csrf_token(request)
+    audit("login_success", username=user.username, user_id=user.id, ip=ip)
     return RedirectResponse(dest, status_code=303)
 
 
 @router.post("/logout")
 def logout(request: Request):
+    user_id = request.session.get("user_id")
+    audit("logout", user_id=user_id, ip=client_ip(request))
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
 
