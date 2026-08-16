@@ -36,11 +36,6 @@
     </section>
 
     <section class="panel">
-      <h2>Launch Control and diagnostics</h2>
-      <p>On Windows, open <strong>scripts\Switcheroo-LaunchControl.cmd</strong> (Start / Stop / Restart, live console, log folders). If something fails, click <strong>Diagnostics ON</strong>, reproduce the action, then open <code>data\diagnostics.log</code>. Each hop logs begin/ok/fail so you can see whether RESTCONF, SSH, Teams, or ServiceNow died. Turning diagnostics off is enough while the process is up; a restart is only needed if the site is down.</p>
-    </section>
-
-    <section class="panel">
       <h2>Security</h2>
       <p class="muted">Open the checklist for what this build already does, what <em>this host</em> still needs in <code>.env</code>, and what remains residual (SSO, TLS at the proxy, and similar).</p>
       <p><a class="btn btn-primary" href="/help/security">Security checklist</a></p>

@@ -7,7 +7,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.config import get_settings
 from app.db import SessionLocal
-from app.diagnostics import sync_log_level
 from app.models import utcnow
 from app.services.request_service import sync_servicenow_tickets
 from app.services.switch_service import monitored_switches, poll_switch_daily, poll_switch_status, tick_troubleshooting
@@ -18,7 +17,6 @@ _scheduler: BackgroundScheduler | None = None
 
 
 def poll_all_status() -> None:
-    sync_log_level()
     db = SessionLocal()
     try:
         switches = monitored_switches(db)

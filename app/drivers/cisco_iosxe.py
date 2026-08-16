@@ -8,7 +8,6 @@ import httpx
 
 from app.config import get_settings
 from app.crypto import SecretError, reveal_secret
-from app.diagnostics import step
 from app.drivers.base import DriverError, DriverUnavailable
 from app.models import Switch
 from app.schemas import InterfaceDetails, InterfaceStatus
@@ -44,8 +43,7 @@ class CiscoIOSXEDriver:
         settings = get_settings()
         if settings.cisco_snmp_community:
             try:
-                with step("cisco.snmp", switch=switch.name, host=host):
-                    return self._snmp_if_oper_status(host, if_names, settings.cisco_snmp_community)
+                return self._snmp_if_oper_status(host, if_names, settings.cisco_snmp_community)
             except Exception as exc:  # noqa: BLE001 — fall through to RESTCONF
                 log.warning("SNMP ifOperStatus failed for %s: %s; trying RESTCONF", switch.name, exc)
         results: list[InterfaceStatus] = []
@@ -124,11 +122,10 @@ class CiscoIOSXEDriver:
         encoded = quote(if_name, safe="")
         path = f"ietf-interfaces:interfaces-state/interface={encoded}"
         try:
-            with step("cisco.restconf", host=host, **{"if": if_name}):
-                with self._restconf_client(user, password) as client:
-                    response = client.get(self._restconf_url(host, path))
-                    response.raise_for_status()
-                    payload = response.json()
+            with self._restconf_client(user, password) as client:
+                response = client.get(self._restconf_url(host, path))
+                response.raise_for_status()
+                payload = response.json()
         except Exception as exc:  # noqa: BLE001
             raise DriverError(f"RESTCONF status read failed for {if_name} on {host}: {exc}") from exc
         iface = _unwrap_interface(payload)
@@ -185,10 +182,9 @@ class CiscoIOSXEDriver:
         key = _native_if_key(if_name)
         path = f"Cisco-IOS-XE-native:native/interface/GigabitEthernet={key}/switchport-config/switchport/access/vlan"
         body = {"Cisco-IOS-XE-native:vlan": {"vlan": vlan_id}}
-        with step("cisco.restconf", host=host, **{"if": if_name}, vlan_id=vlan_id):
-            with self._restconf_client(user, password) as client:
-                response = client.patch(self._restconf_url(host, path), json=body)
-                response.raise_for_status()
+        with self._restconf_client(user, password) as client:
+            response = client.patch(self._restconf_url(host, path), json=body)
+            response.raise_for_status()
 
     def _snmp_if_oper_status(self, host: str, if_names: list[str], community: str) -> list[InterfaceStatus]:
         """Optional lightweight ifOperStatus. Requires CISCO_SNMP_COMMUNITY. Targeted OIDs only."""
@@ -228,9 +224,8 @@ class CiscoIOSXEDriver:
             "timeout": settings.cisco_connect_timeout,
         }
         try:
-            with step("cisco.netmiko", host=host):
-                with ConnectHandler(**params) as conn:
-                    conn.send_config_set(lines)
+            with ConnectHandler(**params) as conn:
+                conn.send_config_set(lines)
         except Exception as exc:  # noqa: BLE001
             raise DriverError(f"SSH config failed on {host}: {exc}") from exc
 

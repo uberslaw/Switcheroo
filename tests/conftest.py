@@ -74,12 +74,6 @@ def _clean_db():
         if folder.exists():
             for path in folder.glob("*.json"):
                 path.unlink()
-    flag = data_dir / "diagnostics.enabled"
-    if flag.exists():
-        flag.unlink()
-    from app.diagnostics import sync_log_level
-
-    sync_log_level()
     yield
     simulator.reset()
 

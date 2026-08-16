@@ -12,7 +12,6 @@ from urllib.parse import urlparse
 import httpx
 
 from app.config import Settings, get_settings
-from app.diagnostics import step
 from app.models import REQUEST_VLAN, STATUS_PENDING, ChangeRequest, User
 from app.services.uptime import short_if_name
 
@@ -362,8 +361,7 @@ class TeamsAdapter:
         err = validate_teams_webhook_url(settings.teams_webhook_url)
         if err:
             raise TeamsError(err)
-        with step("teams.notify", request_id=request.id, action=action):
-            self._http_json(settings.teams_webhook_url, payload)
+        self._http_json(settings.teams_webhook_url, payload)
         log.info(
             "Teams webhook posted action=%s request=%s host=%s",
             action,

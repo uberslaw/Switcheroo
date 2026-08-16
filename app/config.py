@@ -98,8 +98,6 @@ class Settings:
     allowed_hosts: tuple[str, ...]
     bootstrap_username: str
     bootstrap_password: str
-    log_level: str
-    diagnostics: bool
 
     @property
     def servicenow_live(self) -> bool:
@@ -222,8 +220,6 @@ def get_settings() -> Settings:
         ),
         bootstrap_username=(os.getenv("SWITCHEROO_BOOTSTRAP_USERNAME") or "networks").strip() or "networks",
         bootstrap_password=os.getenv("SWITCHEROO_BOOTSTRAP_PASSWORD") or "",
-        log_level=(os.getenv("SWITCHEROO_LOG_LEVEL") or "INFO").strip().upper() or "INFO",
-        diagnostics=_as_bool(os.getenv("SWITCHEROO_DIAGNOSTICS"), False),
     )
 
 
