@@ -26,6 +26,12 @@ Lab-only defaults that must change before any shared/internal deploy:
 
 ## Windows first run
 
+Usual operator path: double-click **`scripts\Switcheroo-LaunchControl.cmd`** (or run `scripts\New-SwitcherooShortcuts.cmd` once for a desktop shortcut). That window starts and stops the site, tails stdout, and opens log folders. It is **not** a Windows service — it supervises `python -m app`.
+
+First run still needs Python **3.12+** on PATH. Launch Control creates `.venv` and copies `.env` if missing.
+
+Raw console (same process, no UI): `.\run.ps1`
+
 ```powershell
 cd C:\Switcheroo
 python -m venv .venv
@@ -34,8 +40,6 @@ python -m pip install -r requirements.txt
 Copy-Item .env.example .env
 python -m app
 ```
-
-Or: `.\run.ps1`
 
 Open http://127.0.0.1:8080
 
@@ -55,7 +59,7 @@ SWITCHEROO_HOST=0.0.0.0
 
 Then restrict with Windows Firewall / reverse proxy. Do not put Switcheroo on the public internet.
 
-Logs: `data\switcheroo.log`  
+Logs: `data\switcheroo.log`, `data\audit.log`, `data\diagnostics.log` (the last one after **Diagnostics ON** in Launch Control)  
 Database: `data\switcheroo.db`
 
 ## Polling load (Catalyst 9300)
@@ -163,6 +167,7 @@ python -m pytest --timeout=30 --timeout-method=thread
 ## Project layout
 
 ```
+scripts/       Windows Launch Control (Start/Stop/Restart, live console, diagnostics toggle)
 app/            FastAPI app (uvicorn app.main:app)
 app/drivers/    SwitchDriver: simulator + cisco_iosxe + ServiceNow Table API + Teams webhook (dry-run default)
 docs/           IAM / ServiceNow POC brief, Teams webhook setup, security brief for Cyber

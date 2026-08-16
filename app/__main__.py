@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
+
 import uvicorn
 
 from app.config import get_settings
+from app.diagnostics import desired_log_level
 from app.prereq import check_prerequisites
 
 
@@ -18,12 +21,15 @@ def main() -> None:
     print(f"Logs: {settings.log_file}")
     if settings.show_lab_credentials:
         print("Lab logins: networks / networks  and  cs / cs  (not for production)")
+    uv_level = logging.getLevelName(desired_log_level()).lower()
+    if uv_level not in {"critical", "error", "warning", "info", "debug", "trace"}:
+        uv_level = "info"
     uvicorn.run(
         "app.main:app",
         host=settings.host,
         port=settings.port,
         reload=False,
-        log_level="info",
+        log_level=uv_level,
     )
 
 

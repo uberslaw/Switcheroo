@@ -21,6 +21,8 @@ def test_help_menu_and_using_page(cs_client, seeded_db):
     assert "Using Switcheroo" in page.text
     assert "Client Services" in page.text
     assert "pause monitoring" in page.text.lower()
+    assert "Launch Control" in page.text
+    assert "diagnostics.log" in page.text
 
 
 def test_security_checklist_page_for_cs(cs_client, seeded_db):
