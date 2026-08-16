@@ -11,7 +11,7 @@ from tests.conftest import add_cs_user, first_port
 def test_all_off_stays_pending(seeded_db):
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     assert req.status == "pending"
     assert req.auto_approved is False
@@ -24,7 +24,7 @@ def test_global_on_vlan_auto_approves_and_writes(seeded_db):
     seeded_db.flush()
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     assert req.auto_approved is True
     assert req.auto_approve_reason == "Everywhere"
@@ -34,7 +34,9 @@ def test_global_on_vlan_auto_approves_and_writes(seeded_db):
     seeded_db.refresh(port)
     assert port.vlan_id == 50
     assert port.vlan_name == "GUEST"
-    assert req.servicenow_ticket == "SN-DRY-RUN"
+    assert req.servicenow_ticket == "RITM-DRY-RUN"
+    assert req.sn_ritm_number == "RITM-DRY-RUN"
+    assert req.sn_req_number == "REQ-DRY-RUN"
 
 
 def test_office_on_only_that_location(seeded_db):
@@ -43,8 +45,8 @@ def test_office_on_only_that_location(seeded_db):
     set_policy(seeded_db, office_key(a.switch.location), True)
     seeded_db.flush()
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req_a = create_request(seeded_db, cs, a, REQUEST_VLAN, vlan_id=50)
-    req_b = create_request(seeded_db, cs, b, REQUEST_VLAN, vlan_id=40)
+    req_a = create_request(seeded_db, cs, a, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
+    req_b = create_request(seeded_db, cs, b, REQUEST_VLAN, vlan_id=40, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     assert req_a.auto_approved is True
     assert req_a.auto_approve_reason.startswith("Office:")
@@ -63,8 +65,8 @@ def test_requestor_on_only_that_user(seeded_db):
     seeded_db.flush()
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
     port = first_port(seeded_db)
-    req_limited = create_request(seeded_db, limited, port, REQUEST_VLAN, vlan_id=50)
-    req_cs = create_request(seeded_db, cs, first_port(seeded_db, "CS-BLD-B-AS01"), REQUEST_VLAN, vlan_id=40)
+    req_limited = create_request(seeded_db, limited, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
+    req_cs = create_request(seeded_db, cs, first_port(seeded_db, "CS-BLD-B-AS01"), REQUEST_VLAN, vlan_id=40, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     assert req_limited.auto_approved is True
     assert req_limited.auto_approve_reason == "Requestor: cs-limited"
@@ -90,7 +92,7 @@ def test_requests_page_shows_auto_approved(client, seeded_db):
     seeded_db.flush()
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     client.post("/login", data={"username": "cs", "password": "cs"}, follow_redirects=False)
     page = client.get("/requests")
@@ -122,6 +124,6 @@ def test_networks_can_toggle_policies_page(client, seeded_db):
     assert toggle.status_code == 303
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     assert req.auto_approved is True

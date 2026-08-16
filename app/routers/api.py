@@ -66,6 +66,7 @@ def request_vlan(
     port_id: int,
     request: Request,
     vlan_id: int = Form(...),
+    reason: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(_current_user),
 ):
@@ -73,9 +74,13 @@ def request_vlan(
     if err:
         return err
     try:
-        req = create_request(db, user, port, REQUEST_VLAN, vlan_id=vlan_id)
+        req = create_request(db, user, port, REQUEST_VLAN, vlan_id=vlan_id, reason=reason)
         db.commit()
-        extra = f" ServiceNow: {req.servicenow_ticket}." if req.servicenow_ticket else ""
+        extra = ""
+        if req.sn_ritm_number and req.sn_req_number:
+            extra = f" ServiceNow: {req.sn_ritm_number} / {req.sn_req_number}."
+        elif req.sn_primary:
+            extra = f" ServiceNow: {req.sn_primary}."
         if req.auto_approved:
             title = "VLAN Change Auto-approved"
             detail = f"{port.if_name.replace('GigabitEthernet', 'Gi')} → {vlan_id} {req.requested_vlan_name or ''} ({req.auto_approve_reason}).{extra}"

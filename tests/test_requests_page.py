@@ -14,15 +14,16 @@ def test_networks_sees_all_offices(client, seeded_db):
     from app.models import Port
 
     b = seeded_db.scalar(select(Port).where(Port.switch_id == b_switch.id).order_by(Port.if_index))
-    create_request(seeded_db, cs, a, REQUEST_VLAN, vlan_id=50)
-    create_request(seeded_db, cs, b, REQUEST_VLAN, vlan_id=40)
+    create_request(seeded_db, cs, a, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
+    create_request(seeded_db, cs, b, REQUEST_VLAN, vlan_id=40, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     client.post("/login", data={"username": "networks", "password": "networks"}, follow_redirects=False)
     page = client.get("/requests")
     assert page.status_code == 200
     assert "CS-BLD-A-AS01" in page.text
     assert "CS-BLD-B-AS01" in page.text
-    assert "SN-DRY-RUN" in page.text
+    assert "RITM-DRY-RUN" in page.text
+    assert "REQ-DRY-RUN" in page.text
     assert "Requests" in page.text
 
 
@@ -34,8 +35,8 @@ def test_cs_limited_only_sees_permitted_switch(client, seeded_db):
     from app.models import Port
 
     b = seeded_db.scalar(select(Port).where(Port.switch_id == b_switch.id).order_by(Port.if_index))
-    create_request(seeded_db, cs, a, REQUEST_VLAN, vlan_id=50)
-    create_request(seeded_db, cs, b, REQUEST_VLAN, vlan_id=40)
+    create_request(seeded_db, cs, a, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
+    create_request(seeded_db, cs, b, REQUEST_VLAN, vlan_id=40, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     client.post("/login", data={"username": "cs-limited", "password": "cs-limited"}, follow_redirects=False)
     page = client.get("/requests")
@@ -52,10 +53,10 @@ def test_cs_limited_only_sees_permitted_switch(client, seeded_db):
 def test_pending_vlan_pane_shows_dry_run_ticket(client, seeded_db):
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     client.post("/login", data={"username": "cs", "password": "cs"}, follow_redirects=False)
     html = client.get(f"/partials/switches/{port.switch_id}/pane-status?port={port.id}").text
     assert "REQ" in html
-    assert "SN-DRY-RUN" in html
+    assert "RITM-DRY-RUN" in html
     assert "50" in html

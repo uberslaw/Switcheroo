@@ -17,7 +17,9 @@ from app.services.uptime import short_if_name
 
 log = logging.getLogger("switcheroo.servicenow")
 
-DRY_RUN_TICKET = "SN-DRY-RUN"
+DRY_RUN_RITM = "RITM-DRY-RUN"
+DRY_RUN_REQ = "REQ-DRY-RUN"
+DRY_RUN_TICKET = DRY_RUN_RITM
 CORRELATION_PREFIX = "switcheroo:vlan:"
 SUBJECT_PREFIX = "[Switcheroo]"
 
@@ -30,6 +32,10 @@ class TicketResult:
     correlation_id: str
     payload: dict[str, Any]
     live: bool
+    ritm_number: Optional[str] = None
+    req_number: Optional[str] = None
+    ritm_sys_id: Optional[str] = None
+    req_sys_id: Optional[str] = None
 
 
 class ServiceNowError(Exception):
@@ -57,6 +63,39 @@ def _vlan_label(vlan_id: int | None, vlan_name: str | None) -> str:
     return f"{vlan_id} {name}".strip()
 
 
+def _ref_pair(ref: Any) -> tuple[Optional[str], Optional[str]]:
+    """Return (sys_id, display number) from a Table API reference field."""
+    if not ref:
+        return None, None
+    if isinstance(ref, str):
+        if ref.startswith("REQ") or ref.startswith("RITM"):
+            return None, ref
+        return ref, None
+    if isinstance(ref, dict):
+        sys_id = ref.get("value") or ref.get("sys_id")
+        number = ref.get("display_value") or ref.get("number")
+        if isinstance(number, str) and number and not (number.startswith("REQ") or number.startswith("RITM")):
+            if len(number) == 32 and " " not in number:
+                sys_id = sys_id or number
+                number = None
+        return sys_id, number
+    return None, None
+
+
+def _normalize_poll_row(row: dict[str, Any]) -> dict[str, Any]:
+    out = dict(row)
+    req_sys, req_number = _ref_pair(row.get("request"))
+    if not req_number:
+        req_number = row.get("request.number") or row.get("request_number")
+    if req_number:
+        out["req_number"] = req_number
+    if req_sys:
+        out["req_sys_id"] = req_sys
+    if row.get("number"):
+        out["ritm_number"] = row.get("number")
+    return out
+
+
 def build_create_payload(req: ChangeRequest) -> dict[str, Any]:
     settings = get_settings()
     corr = req.servicenow_correlation_id or correlation_id_for(req.id)
@@ -69,6 +108,8 @@ def build_create_payload(req: ChangeRequest) -> dict[str, Any]:
             f"correlation_id: {corr}",
             f"request_id: {req.id}",
             f"requester: {requester}",
+            f"windows_account: {req.windows_account or ''}",
+            f"reason: {req.reason or ''}",
             f"switch: {switch.name if switch else req.switch_id}",
             f"location/office: {switch.location if switch else ''}",
             f"management_ip: {switch.management_ip if switch else ''}",
@@ -112,9 +153,20 @@ class ServiceNowAdapter:
         result = self.open_vlan_incident(request)
         if result.correlation_id:
             request.servicenow_correlation_id = result.correlation_id
+        if result.ritm_sys_id:
+            request.sn_ritm_sys_id = result.ritm_sys_id
+        if result.req_sys_id:
+            request.sn_req_sys_id = result.req_sys_id
+        if result.ritm_number:
+            request.sn_ritm_number = result.ritm_number
+        if result.req_number:
+            request.sn_req_number = result.req_number
         if result.sys_id:
             request.servicenow_sys_id = result.sys_id
-        return result.number, result.note
+        elif result.ritm_sys_id:
+            request.servicenow_sys_id = result.ritm_sys_id
+        primary = result.ritm_number or result.req_number or result.number
+        return primary, result.note
 
     def open_vlan_incident(self, request: ChangeRequest) -> TicketResult:
         if request.request_type != REQUEST_VLAN:
@@ -128,19 +180,23 @@ class ServiceNowAdapter:
             )
         corr = request.servicenow_correlation_id or correlation_id_for(request.id)
         request.servicenow_correlation_id = corr
-        if request.servicenow_sys_id:
+        if request.servicenow_sys_id or request.sn_ritm_sys_id:
             return TicketResult(
-                number=request.servicenow_ticket,
-                sys_id=request.servicenow_sys_id,
+                number=request.sn_ritm_number or request.servicenow_ticket,
+                sys_id=request.sn_ritm_sys_id or request.servicenow_sys_id,
                 note="ServiceNow ticket already linked; not creating a duplicate.",
                 correlation_id=corr,
                 payload={},
                 live=False,
+                ritm_number=request.sn_ritm_number,
+                req_number=request.sn_req_number,
+                ritm_sys_id=request.sn_ritm_sys_id,
+                req_sys_id=request.sn_req_sys_id,
             )
         payload = build_create_payload(request)
         if not self.http_allowed():
             return self._dry_run_write(request, payload, corr)
-        return self._live_create(payload, corr)
+        return self._live_open(request, payload, corr)
 
     def resolve_ticket(self, request: ChangeRequest, work_notes: str) -> None:
         settings = get_settings()
@@ -162,17 +218,25 @@ class ServiceNowAdapter:
         self._update_ticket(request, body, "cancel")
 
     def poll_open_tickets(self) -> list[dict[str, Any]]:
-        """Recover ticket numbers after restart. Dry-run reads local files only."""
+        """Recover RITM/REQ numbers after restart. Dry-run reads local files only."""
         if not self.http_allowed():
             return self._dry_run_poll()
         settings = get_settings()
         query = f"correlation_idSTARTSWITH{CORRELATION_PREFIX}^ORshort_descriptionSTARTSWITH{SUBJECT_PREFIX}"
-        path = f"/api/now/table/{settings.servicenow_table}"
         params = {
             "sysparm_query": query,
-            "sysparm_fields": "sys_id,number,correlation_id,short_description,state",
+            "sysparm_fields": "sys_id,number,correlation_id,short_description,state,request,request.number",
             "sysparm_limit": "200",
         }
+        rows = self._table_query(settings.servicenow_ritm_table, params)
+        if not rows and settings.servicenow_table not in {settings.servicenow_ritm_table, "sc_req_item"}:
+            fallback = dict(params)
+            fallback["sysparm_fields"] = "sys_id,number,correlation_id,short_description,state"
+            rows = self._table_query(settings.servicenow_table, fallback)
+        return [_normalize_poll_row(row) for row in rows]
+
+    def _table_query(self, table: str, params: dict[str, str]) -> list[dict[str, Any]]:
+        path = f"/api/now/table/{table}"
         data = self._http_json("GET", path, params=params)
         result = data.get("result") or []
         if isinstance(result, dict):
@@ -182,40 +246,51 @@ class ServiceNowAdapter:
     def _update_ticket(self, request: ChangeRequest, body: dict[str, Any], action: str) -> None:
         if request.request_type != REQUEST_VLAN:
             return
-        if not request.servicenow_sys_id and not request.servicenow_correlation_id:
+        if not request.servicenow_sys_id and not request.sn_ritm_sys_id and not request.servicenow_correlation_id:
             log.info("No ServiceNow link on request %s; skip %s", request.id, action)
             return
         if not self.http_allowed():
             self._dry_run_update(request, body, action)
             return
-        if not request.servicenow_sys_id:
+        sys_id = request.sn_ritm_sys_id or request.servicenow_sys_id
+        if not sys_id:
             log.warning("Request %s has no sys_id; cannot %s live", request.id, action)
             request.servicenow_note = (request.servicenow_note or "") + f" Live {action} skipped (no sys_id)."
             return
         settings = get_settings()
-        path = f"/api/now/table/{settings.servicenow_table}/{quote(request.servicenow_sys_id, safe='')}"
+        table = settings.servicenow_ritm_table if request.sn_ritm_sys_id else settings.servicenow_table
+        path = f"/api/now/table/{table}/{quote(sys_id, safe='')}"
         self._http_json("PATCH", path, json_body=body)
 
     def _dry_run_write(self, request: ChangeRequest, payload: dict[str, Any], corr: str) -> TicketResult:
+        settings = get_settings()
+        ritm_sys = f"dryrun-ritm-{request.id}"
+        req_sys = f"dryrun-req-{request.id}"
         record = {
             "mode": "dry-run",
             "created_at": datetime.now(timezone.utc).isoformat(),
-            "instance": get_settings().servicenow_instance_url or "(unset — no HTTP)",
-            "table": get_settings().servicenow_table,
+            "instance": settings.servicenow_instance_url or "(unset — no HTTP)",
+            "table": settings.servicenow_ritm_table,
+            "req_table": settings.servicenow_req_table,
             "http": False,
+            "ritm_number": DRY_RUN_RITM,
+            "req_number": DRY_RUN_REQ,
             "payload": payload,
         }
         path = dry_run_dir() / _safe_filename(corr)
         path.write_text(json.dumps(record, indent=2), encoding="utf-8")
         log.info("ServiceNow dry-run create (no HTTP) request=%s file=%s payload=%s", request.id, path, payload)
-        sys_id = f"dryrun-{request.id}"
         return TicketResult(
-            number=DRY_RUN_TICKET,
-            sys_id=sys_id,
-            note=f"Dry-run: would POST {get_settings().servicenow_table}. Payload at {path}. No call to ServiceNow.",
+            number=DRY_RUN_RITM,
+            sys_id=ritm_sys,
+            note=f"Dry-run: would create {DRY_RUN_RITM} / {DRY_RUN_REQ} on {settings.servicenow_ritm_table}. Payload at {path}. No call to ServiceNow.",
             correlation_id=corr,
             payload=payload,
             live=False,
+            ritm_number=DRY_RUN_RITM,
+            req_number=DRY_RUN_REQ,
+            ritm_sys_id=ritm_sys,
+            req_sys_id=req_sys,
         )
 
     def _dry_run_update(self, request: ChangeRequest, body: dict[str, Any], action: str) -> None:
@@ -248,8 +323,10 @@ class ServiceNowAdapter:
             payload = data.get("payload") or {}
             rows.append(
                 {
-                    "sys_id": f"dryrun-file-{path.stem}",
-                    "number": DRY_RUN_TICKET,
+                    "sys_id": data.get("ritm_sys_id") or f"dryrun-file-{path.stem}",
+                    "number": data.get("ritm_number") or DRY_RUN_RITM,
+                    "ritm_number": data.get("ritm_number") or DRY_RUN_RITM,
+                    "req_number": data.get("req_number") or DRY_RUN_REQ,
                     "correlation_id": payload.get("correlation_id") or "",
                     "short_description": payload.get("short_description") or "",
                     "state": "dry-run",
@@ -257,21 +334,122 @@ class ServiceNowAdapter:
             )
         return rows
 
-    def _live_create(self, payload: dict[str, Any], corr: str) -> TicketResult:
+    def _live_open(self, request: ChangeRequest, payload: dict[str, Any], corr: str) -> TicketResult:
         settings = get_settings()
-        path = f"/api/now/table/{settings.servicenow_table}"
-        data = self._http_json("POST", path, json_body=payload)
+        errors: list[str] = []
+        if settings.servicenow_catalog_item_sys_id:
+            try:
+                return self._live_order_now(payload, corr)
+            except ServiceNowError as exc:
+                log.warning("Catalog order_now failed, trying Table API sc_req_item: %s", exc)
+                errors.append(str(exc))
+        try:
+            return self._live_create_ritm(payload, corr)
+        except ServiceNowError as exc:
+            log.warning("sc_req_item create failed, falling back to %s: %s", settings.servicenow_table, exc)
+            errors.append(str(exc))
+        if settings.servicenow_table not in {settings.servicenow_ritm_table, "sc_req_item"}:
+            return self._live_create_fallback(payload, corr)
+        raise ServiceNowError("; ".join(errors) or "ServiceNow create failed")
+
+    def _live_order_now(self, payload: dict[str, Any], corr: str) -> TicketResult:
+        settings = get_settings()
+        item = quote(settings.servicenow_catalog_item_sys_id, safe="")
+        path = f"/api/sn_sc/servicecatalog/items/{item}/order_now"
+        body = {
+            "sysparm_quantity": 1,
+            "variables": {
+                "short_description": payload.get("short_description"),
+                "description": payload.get("description"),
+                "correlation_id": corr,
+            },
+        }
+        data = self._http_json("POST", path, json_body=body)
+        result = data.get("result") or {}
+        if isinstance(result.get("number"), dict):
+            result = {**result, **result["number"]}
+        req_number = result.get("request_number") or result.get("number")
+        req_sys_id = result.get("request_id") or result.get("sys_id")
+        ritm_number, ritm_sys_id = self._fetch_ritm_for_request(req_sys_id, corr)
+        note = f"Ordered catalog item → {ritm_number or 'RITM?'} / {req_number}."
+        return TicketResult(
+            number=ritm_number or req_number,
+            sys_id=ritm_sys_id or req_sys_id,
+            note=note,
+            correlation_id=corr,
+            payload=payload,
+            live=True,
+            ritm_number=ritm_number,
+            req_number=req_number,
+            ritm_sys_id=ritm_sys_id,
+            req_sys_id=req_sys_id,
+        )
+
+    def _live_create_ritm(self, payload: dict[str, Any], corr: str) -> TicketResult:
+        settings = get_settings()
+        body = dict(payload)
+        if settings.servicenow_catalog_item_sys_id:
+            body["cat_item"] = settings.servicenow_catalog_item_sys_id
+        data = self._http_json("POST", f"/api/now/table/{settings.servicenow_ritm_table}", json_body=body)
+        result = data.get("result") or {}
+        ritm_number = result.get("number")
+        ritm_sys_id = result.get("sys_id")
+        req_sys_id, req_number = _ref_pair(result.get("request"))
+        if req_sys_id and not req_number:
+            req_number, req_sys_id = self._fetch_request_number(req_sys_id)
+        note = f"Created {settings.servicenow_ritm_table} {ritm_number} / {req_number or 'REQ?'}."
+        return TicketResult(
+            number=ritm_number,
+            sys_id=ritm_sys_id,
+            note=note,
+            correlation_id=corr,
+            payload=payload,
+            live=True,
+            ritm_number=ritm_number,
+            req_number=req_number,
+            ritm_sys_id=ritm_sys_id,
+            req_sys_id=req_sys_id,
+        )
+
+    def _live_create_fallback(self, payload: dict[str, Any], corr: str) -> TicketResult:
+        settings = get_settings()
+        data = self._http_json("POST", f"/api/now/table/{settings.servicenow_table}", json_body=payload)
         result = data.get("result") or {}
         number = result.get("number")
         sys_id = result.get("sys_id")
         return TicketResult(
             number=number,
             sys_id=sys_id,
-            note=f"Created {settings.servicenow_table} {number} ({sys_id}).",
+            note=f"Created fallback {settings.servicenow_table} {number} ({sys_id}).",
             correlation_id=corr,
             payload=payload,
             live=True,
         )
+
+    def _fetch_request_number(self, req_sys_id: str) -> tuple[Optional[str], Optional[str]]:
+        settings = get_settings()
+        path = f"/api/now/table/{settings.servicenow_req_table}/{quote(req_sys_id, safe='')}"
+        data = self._http_json("GET", path, params={"sysparm_fields": "sys_id,number"})
+        result = data.get("result") or {}
+        return result.get("number"), result.get("sys_id") or req_sys_id
+
+    def _fetch_ritm_for_request(self, req_sys_id: Optional[str], corr: str) -> tuple[Optional[str], Optional[str]]:
+        if not req_sys_id:
+            return None, None
+        settings = get_settings()
+        query = f"request={req_sys_id}^ORcorrelation_id={corr}"
+        rows = self._table_query(
+            settings.servicenow_ritm_table,
+            {
+                "sysparm_query": query,
+                "sysparm_fields": "sys_id,number,correlation_id,request",
+                "sysparm_limit": "5",
+            },
+        )
+        if not rows:
+            return None, None
+        row = rows[0]
+        return row.get("number"), row.get("sys_id")
 
     def _http_json(
         self,

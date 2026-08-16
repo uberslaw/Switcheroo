@@ -63,6 +63,12 @@ def _migrate_sqlite() -> None:
             "servicenow_correlation_id": "VARCHAR(128)",
             "auto_approved": "INTEGER DEFAULT 0",
             "auto_approve_reason": "VARCHAR(256)",
+            "reason": "TEXT",
+            "windows_account": "VARCHAR(256)",
+            "sn_req_number": "VARCHAR(64)",
+            "sn_ritm_number": "VARCHAR(64)",
+            "sn_req_sys_id": "VARCHAR(64)",
+            "sn_ritm_sys_id": "VARCHAR(64)",
         }
         if req_names:
             for col, typ in alters.items():

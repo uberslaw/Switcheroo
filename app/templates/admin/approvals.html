@@ -14,7 +14,7 @@
       <th>Who</th>
       <th>Switch / port</th>
       <th>Change</th>
-      <th>ServiceNow</th>
+      <th>RITM / REQ</th>
       <th></th>
     </tr>
   </thead>
@@ -35,8 +35,22 @@
         → VLAN {{ r.requested_vlan_id }} {{ r.requested_vlan_name or '' }}
         (now {{ r.port.vlan_id }} {{ r.port.vlan_name or '' }})
         {% endif %}
+        {% if r.reason %}
+        <div class="reason-text">{{ r.reason }}</div>
+        {% endif %}
       </td>
-      <td class="tiny">{{ r.servicenow_ticket or '—' }}<br>{{ r.servicenow_note or '' }}</td>
+      <td class="sn-ticket">
+        {% if r.sn_ritm_number %}
+        <div class="sn-ritm">{{ r.sn_ritm_number }}</div>
+        {% endif %}
+        {% if r.sn_req_number %}
+        <div class="muted">{{ r.sn_req_number }}</div>
+        {% endif %}
+        {% if not r.sn_ritm_number and not r.sn_req_number %}
+        {{ r.servicenow_ticket or '—' }}
+        {% endif %}
+        <div class="tiny">{{ r.servicenow_note or '' }}</div>
+      </td>
       <td>
         <form method="post" action="/admin/approvals/{{ r.id }}/approve" class="stack-tight">
           <input name="note" placeholder="optional note">

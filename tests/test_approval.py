@@ -12,7 +12,7 @@ def test_approve_vlan_updates_simulator(seeded_db):
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
     nets = seeded_db.scalar(select(User).where(User.username == "networks"))
     port = first_port(seeded_db)
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.flush()
     approve_request(seeded_db, req, nets, "ok")
     seeded_db.commit()

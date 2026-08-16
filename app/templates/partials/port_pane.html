@@ -38,6 +38,9 @@
           {% endfor %}
         </select>
       </label>
+      <label>Why do you need this VLAN change?
+        <textarea name="reason" required rows="3" maxlength="2000" placeholder="Required — e.g. visitor laptop needs guest access"></textarea>
+      </label>
       <button class="btn" type="submit">Request VLAN change</button>
     </form>
     {% if p.admin_status == 'down' %}
