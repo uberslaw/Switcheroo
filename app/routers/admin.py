@@ -27,6 +27,14 @@ from app.templating import flash, render
 router = APIRouter(prefix="/admin")
 
 
+def _safe_next(raw: str | None, default: str = "/admin/approvals") -> str:
+    """Allow only same-origin relative paths so approve/reject can return to /requests."""
+    text = (raw or "").strip()
+    if not text.startswith("/") or text.startswith("//") or "\\" in text or "://" in text:
+        return default
+    return text
+
+
 def _admin(request: Request, db: Session = Depends(get_db)) -> User:
     user = require_user(db, request)
     return require_networks(user)
@@ -232,13 +240,15 @@ def approval_approve(
     request_id: int,
     request: Request,
     note: str = Form(""),
+    next: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(_admin),
 ):
+    dest = _safe_next(next)
     req = db.get(ChangeRequest, request_id)
     if req is None:
         flash(request, "Request not found.", "error")
-        return RedirectResponse("/admin/approvals", status_code=303)
+        return RedirectResponse(dest, status_code=303)
     try:
         approve_request(db, req, user, note)
         db.commit()
@@ -249,7 +259,7 @@ def approval_approve(
     except RequestError as exc:
         db.rollback()
         flash(request, str(exc), "error")
-    return RedirectResponse("/admin/approvals", status_code=303)
+    return RedirectResponse(dest, status_code=303)
 
 
 @router.post("/approvals/{request_id}/reject")
@@ -257,13 +267,15 @@ def approval_reject(
     request_id: int,
     request: Request,
     note: str = Form(...),
+    next: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(_admin),
 ):
+    dest = _safe_next(next)
     req = db.get(ChangeRequest, request_id)
     if req is None:
         flash(request, "Request not found.", "error")
-        return RedirectResponse("/admin/approvals", status_code=303)
+        return RedirectResponse(dest, status_code=303)
     try:
         reject_request(db, req, user, note)
         db.commit()
@@ -271,7 +283,7 @@ def approval_reject(
     except RequestError as exc:
         db.rollback()
         flash(request, str(exc), "error")
-    return RedirectResponse("/admin/approvals", status_code=303)
+    return RedirectResponse(dest, status_code=303)
 
 
 @router.get("/policies")

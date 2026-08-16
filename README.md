@@ -119,6 +119,23 @@ Give this to ServiceNow / IAM: **[docs/servicenow-poc.md](docs/servicenow-poc.md
 
 Review all requests (CS sees permitted offices/switches only): **http://127.0.0.1:8080/requests**
 
+Networks can **Approve & run** / **Reject** pending rows on that page (or on **http://127.0.0.1:8080/admin/approvals**).
+
+## Teams (VLAN-change channel alert)
+
+A Teams webhook is the pager so Networks do not have to keep the console open. **Only pending VLAN change requests** post a card (not bounce, refresh, troubleshoot, or auto-approved writes).
+
+| Mode | Env | Behaviour |
+| --- | --- | --- |
+| Dry-run (default) | `TEAMS_ENABLED=false` and/or `TEAMS_DRY_RUN=true` | Local request + payload written to `data/teams-dryrun/`. **No HTTP** to Microsoft. |
+| Live | `TEAMS_ENABLED=true`, `TEAMS_DRY_RUN=false`, `TEAMS_WEBHOOK_URL` + `SWITCHEROO_PUBLIC_URL` set | `POST` Adaptive Card (Workflows) or MessageCard (classic Incoming Webhook) to the channel. |
+
+The card says a VLAN change request has been generated, includes switch/port/VLAN facts, and links to `{SWITCHEROO_PUBLIC_URL}/requests?status=pending#request-{id}` to accept or reject.
+
+If live mode is on and the webhook or public URL is missing (or the webhook host is not Teams/Power Automate), startup **fails fast**. A Teams POST failure is logged and **does not** drop the local request.
+
+Give this to whoever owns the Networks channel: **[docs/teams-webhook.md](docs/teams-webhook.md)**.
+
 ## Auto-approve (Networks Policies)
 
 Default is **all off** — requests stay on the Networks queue. If **any** matching rule is on, the request runs immediately (VLAN still creates the ServiceNow ticket first, then resolve/close like a human Approve).
@@ -142,8 +159,8 @@ python -m pytest --timeout=30 --timeout-method=thread
 
 ```
 app/            FastAPI app (uvicorn app.main:app)
-app/drivers/    SwitchDriver: simulator + cisco_iosxe + ServiceNow Table API (dry-run default)
-docs/           IAM / ServiceNow POC brief
+app/drivers/    SwitchDriver: simulator + cisco_iosxe + ServiceNow Table API + Teams webhook (dry-run default)
+docs/           IAM / ServiceNow POC brief + Teams webhook setup
 app/services/   polling, cooldown, approvals
 app/templates/  Jinja2 + HTMX
 tests/

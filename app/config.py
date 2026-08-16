@@ -19,6 +19,13 @@ def _as_bool(value: str | None, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _teams_format(value: str | None) -> str:
+    text = (value or "adaptive").strip().lower()
+    if text not in {"adaptive", "messagecard"}:
+        raise ValueError("TEAMS_WEBHOOK_FORMAT must be 'adaptive' or 'messagecard'.")
+    return text
+
+
 def _as_int(value: str | None, default: int) -> int:
     if value is None or value.strip() == "":
         return default
@@ -61,6 +68,12 @@ class Settings:
     servicenow_state_cancelled: str
     servicenow_close_code: str
     servicenow_http_timeout: int
+    public_url: str
+    teams_enabled: bool
+    teams_dry_run: bool
+    teams_webhook_url: str
+    teams_webhook_format: str
+    teams_http_timeout: int
     cisco_restconf_port: int
     cisco_restconf_verify_tls: bool
     cisco_netconf_port: int
@@ -72,6 +85,10 @@ class Settings:
     @property
     def servicenow_live(self) -> bool:
         return self.servicenow_enabled and not self.servicenow_dry_run
+
+    @property
+    def teams_live(self) -> bool:
+        return self.teams_enabled and not self.teams_dry_run
 
     @property
     def bind_is_all_interfaces(self) -> bool:
@@ -141,6 +158,12 @@ def get_settings() -> Settings:
         servicenow_state_cancelled=(os.getenv("SERVICENOW_STATE_CANCELLED") or "8").strip(),
         servicenow_close_code=(os.getenv("SERVICENOW_CLOSE_CODE") or "Solved (Permanently)").strip(),
         servicenow_http_timeout=max(1, min(15, _as_int(os.getenv("SERVICENOW_HTTP_TIMEOUT"), 10))),
+        public_url=(os.getenv("SWITCHEROO_PUBLIC_URL") or "").strip().rstrip("/"),
+        teams_enabled=_as_bool(os.getenv("TEAMS_ENABLED"), False),
+        teams_dry_run=_as_bool(os.getenv("TEAMS_DRY_RUN"), True),
+        teams_webhook_url=(os.getenv("TEAMS_WEBHOOK_URL") or "").strip(),
+        teams_webhook_format=_teams_format(os.getenv("TEAMS_WEBHOOK_FORMAT")),
+        teams_http_timeout=max(1, min(15, _as_int(os.getenv("TEAMS_HTTP_TIMEOUT"), 10))),
         cisco_restconf_port=_as_int(os.getenv("CISCO_RESTCONF_PORT"), 443),
         cisco_restconf_verify_tls=_as_bool(os.getenv("CISCO_RESTCONF_VERIFY_TLS"), True),
         cisco_netconf_port=_as_int(os.getenv("CISCO_NETCONF_PORT"), 830),

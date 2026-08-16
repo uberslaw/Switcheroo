@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.drivers.factory import get_driver
 from app.drivers.servicenow import ServiceNowError, servicenow
+from app.drivers.teams import TeamsError, teams
 from app.models import (
     REQUEST_BOUNCE,
     REQUEST_NO_SHUTDOWN,
@@ -83,6 +84,8 @@ def create_request(
     match = match_auto_approve(db, req)
     if match is not None:
         approve_request(db, req, reviewer=None, note=match.work_notes, auto_reason=match.label)
+    elif request_type == REQUEST_VLAN:
+        _teams_notify_pending(req)
     return req
 
 
@@ -154,6 +157,14 @@ def reject_request(db: Session, req: ChangeRequest, reviewer: User, note: str) -
     req.reviewed_at = utcnow()
     _sn_after_decision(req, approved=False)
     return req
+
+
+def _teams_notify_pending(req: ChangeRequest) -> None:
+    """Best-effort: a Teams outage must not block the local VLAN request."""
+    try:
+        teams.notify_vlan_pending(req)
+    except TeamsError as exc:
+        log.warning("Teams notify failed for request %s: %s", req.id, exc)
 
 
 def _sn_after_decision(req: ChangeRequest, approved: bool) -> None:

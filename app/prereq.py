@@ -52,6 +52,7 @@ def check_prerequisites(settings: Settings) -> None:
         _check_sqlite(settings.database_url)
 
     _check_servicenow(settings)
+    _check_teams(settings)
 
 
 def _check_servicenow(settings: Settings) -> None:
@@ -72,6 +73,31 @@ def _check_servicenow(settings: Settings) -> None:
             + ". Set a dedicated integration user (not a personal login), or set "
             "SERVICENOW_DRY_RUN=true until IAM issues the account. "
             "Switcheroo will not call ServiceNow anonymously. See docs/servicenow-poc.md."
+        )
+
+
+def _check_teams(settings: Settings) -> None:
+    """Live webhook requires an https Teams/Power Automate URL and a public site link."""
+    from app.drivers.teams import validate_teams_webhook_url
+
+    if settings.teams_webhook_url:
+        err = validate_teams_webhook_url(settings.teams_webhook_url)
+        if err:
+            raise PrerequisiteError(err)
+    if not settings.teams_enabled or settings.teams_dry_run:
+        return
+    missing: list[str] = []
+    if not settings.teams_webhook_url:
+        missing.append("TEAMS_WEBHOOK_URL")
+    if not settings.public_url:
+        missing.append("SWITCHEROO_PUBLIC_URL")
+    if missing:
+        raise PrerequisiteError(
+            "TEAMS_ENABLED=true and TEAMS_DRY_RUN=false but configuration is missing: "
+            + ", ".join(missing)
+            + ". Create a channel Workflows webhook (or Incoming Webhook) and set "
+            "SWITCHEROO_PUBLIC_URL to the URL Networks can open from Teams. "
+            "See docs/teams-webhook.md."
         )
 
 
