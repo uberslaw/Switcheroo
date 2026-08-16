@@ -95,7 +95,10 @@
         {% endif %}
       </td>
       <td>
-        {% if r.status == 'rejected' %}
+        {% if r.auto_approved %}
+        <span class="source source-auto">Auto-approved</span>
+        <div class="muted">{{ r.auto_approve_reason or "" }}</div>
+        {% elif r.status == 'rejected' %}
         <span class="source source-rejected">denied</span>
         {% elif r.status == 'executed' %}
         <span class="source source-executed">approved</span>
@@ -103,7 +106,11 @@
         <span class="source source-{{ r.status }}">{{ r.status }}</span>
         {% endif %}
       </td>
-      <td>{{ r.reviewer.username if r.reviewer else "—" }}</td>
+      <td>
+        {% if r.auto_approved %}Policy
+        {% elif r.reviewer %}{{ r.reviewer.username }}
+        {% else %}—{% endif %}
+      </td>
       <td>{{ r.reviewed_at|dt if r.reviewed_at else "—" }}</td>
       <td class="mono">{{ r.servicenow_ticket or "—" }}</td>
     </tr>

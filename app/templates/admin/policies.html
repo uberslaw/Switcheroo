@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Policies · Switcheroo{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>Auto-approve policies</h1>
+    <p class="muted">
+      If <strong>any</strong> matching rule is on, the request runs immediately (no Approve click).
+      Match order is most-open first: <strong>Everywhere</strong>, then the switch’s office
+      (<span class="mono">Switch.location</span>), then the requestor.
+      Default is all off — remaining items stay on the approval queue.
+    </p>
+  </div>
+  <a class="btn" href="/admin/approvals">Approval queue</a>
+</div>
+
+<section class="panel">
+  <h2>Everywhere</h2>
+  <p class="muted">All CS VLAN, bounce, and bring-online requests auto-approve.</p>
+  <form method="post" action="/admin/policies/global">
+    {% if global_on %}
+    <input type="hidden" name="enabled" value="0">
+    <button class="btn btn-primary" type="submit">On — turn off</button>
+    {% else %}
+    <input type="hidden" name="enabled" value="1">
+    <button class="btn" type="submit">Off — turn on</button>
+    {% endif %}
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Per office</h2>
+  <p class="muted">Offices are distinct switch locations. Empty locations cannot be targeted.</p>
+  {% if not office_rows %}
+  <p class="empty">No switch locations yet.</p>
+  {% else %}
+  <table class="ports">
+    <thead><tr><th>Office / location</th><th>Auto-approve</th></tr></thead>
+    <tbody>
+      {% for row in office_rows %}
+      <tr>
+        <td>{{ row.location }}</td>
+        <td>
+          <form method="post" action="/admin/policies/office">
+            <input type="hidden" name="office" value="{{ row.location }}">
+            {% if row.enabled %}
+            <input type="hidden" name="enabled" value="0">
+            <button class="btn btn-small btn-primary" type="submit">On</button>
+            {% else %}
+            <input type="hidden" name="enabled" value="1">
+            <button class="btn btn-small" type="submit">Off</button>
+            {% endif %}
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Per requestor</h2>
+  <p class="muted">That CS user’s requests auto-approve on every switch they can see.</p>
+  {% if not user_rows %}
+  <p class="empty">No Client Services users.</p>
+  {% else %}
+  <table class="ports">
+    <thead><tr><th>User</th><th>Auto-approve</th></tr></thead>
+    <tbody>
+      {% for row in user_rows %}
+      <tr>
+        <td>{{ row.user.username }}<div class="muted">{{ row.user.display_name }}</div></td>
+        <td>
+          <form method="post" action="/admin/policies/requestor">
+            <input type="hidden" name="user_id" value="{{ row.user.id }}">
+            {% if row.enabled %}
+            <input type="hidden" name="enabled" value="0">
+            <button class="btn btn-small btn-primary" type="submit">On</button>
+            {% else %}
+            <input type="hidden" name="enabled" value="1">
+            <button class="btn btn-small" type="submit">Off</button>
+            {% endif %}
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

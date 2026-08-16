@@ -1,6 +1,8 @@
 # Switcheroo
 
-Internal website for Client Services and Networks to see Cisco Catalyst 9300 access-switch port status and request small changes (VLAN, bounce, no-shutdown). Writes run only after Networks approval.
+Project location: **`C:\Switcheroo`** (moved from `C:\Users\christopher.owen\Projects\switcheroo`).
+
+Internal website for Client Services and Networks to see Cisco Catalyst 9300 access-switch port status and request small changes (VLAN, bounce, no-shutdown). Writes run only after Networks approval, unless an auto-approve policy matches.
 
 This is a **lab-first v1**. Default driver is an in-process simulator so the site works on a fresh machine with no switches.
 
@@ -25,7 +27,7 @@ Lab-only defaults that must change before any shared/internal deploy:
 ## Windows first run
 
 ```powershell
-cd C:\Users\christopher.owen\Projects\switcheroo
+cd C:\Switcheroo
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
@@ -117,11 +119,23 @@ Give this to ServiceNow / IAM: **[docs/servicenow-poc.md](docs/servicenow-poc.md
 
 Review all requests (CS sees permitted offices/switches only): **http://127.0.0.1:8080/requests**
 
+## Auto-approve (Networks Policies)
+
+Default is **all off** — requests stay on the Networks queue. If **any** matching rule is on, the request runs immediately (VLAN still creates the ServiceNow ticket first, then resolve/close like a human Approve).
+
+| Scope | How to turn on | Matches |
+| --- | --- | --- |
+| Everywhere | **Policies** → Everywhere → On | All CS VLAN / bounce / bring-online |
+| Office | **Policies** → that `Switch.location` → On | Requests for switches in that office |
+| Requestor | **Policies** → that CS user → On | That person’s requests (all offices they can see) |
+
+Most-open wins: global, then office, then requestor. The Requests page shows **Auto-approved** plus the rule (`Everywhere` / `Office: …` / `Requestor: …`). CS cannot change policies. Page: **http://127.0.0.1:8080/admin/policies**
+
 ## Tests
 
 ```powershell
 .\.venv\Scripts\Activate.ps1
-python -m pytest
+python -m pytest --timeout=30 --timeout-method=thread
 ```
 
 ## Project layout

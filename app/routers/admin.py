@@ -20,6 +20,7 @@ from app.models import (
     User,
     UserSwitchPermission,
 )
+from app.services.auto_approve import global_key, is_enabled, office_key, requestor_key, set_policy
 from app.services.request_service import RequestError, approve_request, reject_request
 from app.templating import flash, render
 
@@ -271,6 +272,74 @@ def approval_reject(
         db.rollback()
         flash(request, str(exc), "error")
     return RedirectResponse("/admin/approvals", status_code=303)
+
+
+@router.get("/policies")
+def policies_page(request: Request, db: Session = Depends(get_db), user: User = Depends(_admin)):
+    switches = list(db.scalars(select(Switch).order_by(Switch.location, Switch.name)).all())
+    offices = sorted({s.location for s in switches if (s.location or "").strip()})
+    cs_users = list(db.scalars(select(User).where(User.role == ROLE_CS).order_by(User.username)).all())
+    office_rows = [{"location": loc, "enabled": is_enabled(db, office_key(loc))} for loc in offices]
+    user_rows = [{"user": u, "enabled": is_enabled(db, requestor_key(u.id))} for u in cs_users]
+    return render(
+        request,
+        "admin/policies.html",
+        user=user,
+        global_on=is_enabled(db, global_key()),
+        office_rows=office_rows,
+        user_rows=user_rows,
+    )
+
+
+@router.post("/policies/global")
+def policies_global(
+    request: Request,
+    enabled: str = Form("0"),
+    db: Session = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    set_policy(db, global_key(), enabled == "1")
+    db.commit()
+    flash(request, "Everywhere auto-approve is on." if enabled == "1" else "Everywhere auto-approve is off.", "ok")
+    return RedirectResponse("/admin/policies", status_code=303)
+
+
+@router.post("/policies/office")
+def policies_office(
+    request: Request,
+    office: str = Form(...),
+    enabled: str = Form("0"),
+    db: Session = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    location = office.strip()
+    if not location:
+        flash(request, "Office / location is required.", "error")
+        return RedirectResponse("/admin/policies", status_code=303)
+    set_policy(db, office_key(location), enabled == "1")
+    db.commit()
+    state = "on" if enabled == "1" else "off"
+    flash(request, f"Office auto-approve {state} for {location}.", "ok")
+    return RedirectResponse("/admin/policies", status_code=303)
+
+
+@router.post("/policies/requestor")
+def policies_requestor(
+    request: Request,
+    user_id: int = Form(...),
+    enabled: str = Form("0"),
+    db: Session = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    target = db.get(User, user_id)
+    if target is None or target.role != ROLE_CS:
+        flash(request, "Client Services user not found.", "error")
+        return RedirectResponse("/admin/policies", status_code=303)
+    set_policy(db, requestor_key(target.id), enabled == "1")
+    db.commit()
+    state = "on" if enabled == "1" else "off"
+    flash(request, f"Requestor auto-approve {state} for {target.username}.", "ok")
+    return RedirectResponse("/admin/policies", status_code=303)
 
 
 @router.get("/history")

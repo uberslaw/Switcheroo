@@ -149,5 +149,8 @@ def request_noshut(
     req = create_request(db, user, port, REQUEST_NO_SHUTDOWN)
     db.commit()
     extra = f" ServiceNow: {req.servicenow_ticket}." if req.servicenow_ticket else ""
-    flash(request, f"Bring-online request queued for Networks approval.{extra}", "ok")
+    if req.auto_approved:
+        flash(request, f"Bring-online auto-approved ({req.auto_approve_reason}).{extra}", "ok")
+    else:
+        flash(request, f"Bring-online request queued for Networks approval.{extra}", "ok")
     return _back(switch_id, port_id)

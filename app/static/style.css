@@ -206,6 +206,7 @@ table.ports tr.is-shut { background: rgba(201, 161, 91, 0.08); }
 .source-troubleshoot { border-color: var(--warn); color: var(--warn); }
 .source-write { border-color: var(--up); color: var(--up); }
 .source-executed { border-color: var(--up); color: var(--up); }
+.source-auto { border-color: var(--accent); color: var(--accent); }
 .source-pending { border-color: var(--warn); color: var(--warn); }
 .source-rejected, .source-failed { border-color: var(--down); color: var(--down); }
 
