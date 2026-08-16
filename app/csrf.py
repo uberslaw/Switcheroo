@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hmac
 import secrets
-from typing import Optional
+from urllib.parse import parse_qs
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -21,11 +21,6 @@ def ensure_csrf_token(request: Request) -> str:
     return token
 
 
-def _submitted_token(request: Request, form_token: Optional[str]) -> str:
-    header = request.headers.get("x-csrf-token") or request.headers.get("x-csrftoken") or ""
-    return (header or form_token or "").strip()
-
-
 class CSRFMiddleware(BaseHTTPMiddleware):
     """Require a session CSRF token on cookie-authenticated state changes.
 
@@ -42,13 +37,24 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if path.startswith("/static") or path == "/health":
             return await call_next(request)
         expected = request.session.get("csrf_token")
-        form_token = None
-        content_type = (request.headers.get("content-type") or "").lower()
-        if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
-            form = await request.form()
-            raw = form.get("csrf_token")
-            form_token = raw if isinstance(raw, str) else None
-        submitted = _submitted_token(request, form_token)
+        submitted = (request.headers.get("x-csrf-token") or request.headers.get("x-csrftoken") or "").strip()
+        if not submitted:
+            submitted = await _form_csrf_token(request)
         if not isinstance(expected, str) or not submitted or not hmac.compare_digest(expected, submitted):
             return PlainTextResponse("CSRF token missing or invalid.", status_code=403)
         return await call_next(request)
+
+
+async def _form_csrf_token(request: Request) -> str:
+    """Read csrf_token without preventing FastAPI from parsing the same body."""
+    content_type = (request.headers.get("content-type") or "").lower()
+    raw = await request.body()
+    if "application/x-www-form-urlencoded" in content_type:
+        values = parse_qs(raw.decode("utf-8", errors="replace"), keep_blank_values=True)
+        items = values.get("csrf_token") or []
+        return items[0] if items else ""
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        raw_token = form.get("csrf_token")
+        return raw_token if isinstance(raw_token, str) else ""
+    return ""
