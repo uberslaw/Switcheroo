@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Switcheroo{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
+  <meta name="csrf-token" content="{{ csrf_token }}">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>

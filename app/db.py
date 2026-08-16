@@ -70,6 +70,27 @@ def _migrate_sqlite() -> None:
             for col, typ in alters.items():
                 if col not in req_names:
                     conn.execute(text(f"ALTER TABLE change_requests ADD COLUMN {col} {typ}"))
+    _encrypt_legacy_switch_passwords()
+
+
+def _encrypt_legacy_switch_passwords() -> None:
+    """Rewrite plaintext TACACS/device passwords to enc:v1: blobs."""
+    from sqlalchemy import select
+
+    from app.crypto import PREFIX, store_secret
+    from app.models import Switch
+
+    db = SessionLocal()
+    try:
+        changed = 0
+        for switch in db.scalars(select(Switch)).all():
+            if switch.password and not switch.password.startswith(PREFIX):
+                switch.password = store_secret(switch.password)
+                changed += 1
+        if changed:
+            db.commit()
+    finally:
+        db.close()
 
 
 def get_db() -> Generator[Session, None, None]:

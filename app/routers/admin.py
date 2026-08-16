@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import hash_password, require_networks, require_user, safe_next_path
+from app.crypto import store_secret
 from app.db import get_db
 from app.drivers.simulator import simulator
 from app.models import (
@@ -72,7 +73,7 @@ def switch_create(
         location=location.strip(),
         notes=notes.strip(),
         username=username.strip() or None,
-        password=password or None,
+        password=store_secret(password) if password else None,
         driver_override=override,
     )
     db.add(switch)
@@ -115,7 +116,7 @@ def switch_update(
     if username.strip():
         switch.username = username.strip()
     if password:
-        switch.password = password
+        switch.password = store_secret(password)
     switch.driver_override = driver_override.strip() or None
     db.commit()
     flash(request, "Switch updated.", "ok")

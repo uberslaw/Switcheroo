@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth import authenticate, require_networks, require_user, safe_next_path, user_from_request
 from app.config import get_settings
 from app.db import get_db
+from app.rate_limit import clear_login_failures, client_ip, login_is_blocked, record_login_failure
 from app.models import (
     PORT_PURPOSES,
     ROLE_NETWORKS,
@@ -109,10 +110,16 @@ def login_submit(
     db: Session = Depends(get_db),
 ):
     dest = safe_next_path(next, "/")
+    ip = client_ip(request)
+    if login_is_blocked(ip):
+        flash(request, "Too many sign-in attempts. Try again in 15 minutes.", "error")
+        return render(request, "login.html", user=None, next_path="" if dest == "/" else dest, status_code=429)
     user = authenticate(db, username.strip(), password)
     if user is None:
+        record_login_failure(ip)
         flash(request, "Unknown user or bad password.", "error")
         return render(request, "login.html", user=None, next_path="" if dest == "/" else dest, status_code=401)
+    clear_login_failures(ip)
     request.session["user_id"] = user.id
     return RedirectResponse(dest, status_code=303)
 

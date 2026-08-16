@@ -53,6 +53,7 @@ def check_prerequisites(settings: Settings) -> None:
 
     _check_servicenow(settings)
     _check_teams(settings)
+    _check_hardening(settings)
 
 
 def _check_servicenow(settings: Settings) -> None:
@@ -98,6 +99,40 @@ def _check_teams(settings: Settings) -> None:
             + ". Create a channel Workflows webhook (or Incoming Webhook) and set "
             "SWITCHEROO_PUBLIC_URL to the URL Networks can open from Teams. "
             "See docs/teams-webhook.md."
+        )
+
+
+def _check_hardening(settings: Settings) -> None:
+    from app.config import LAB_SECRET_KEY
+
+    lab_secret = settings.secret_key == LAB_SECRET_KEY
+    if settings.bind_is_all_interfaces and lab_secret and not settings.testing:
+        raise PrerequisiteError(
+            "Refusing SWITCHEROO_HOST=0.0.0.0 (or ::) with the lab SWITCHEROO_SECRET_KEY. "
+            "Set a long random SWITCHEROO_SECRET_KEY before binding beyond loopback. "
+            "See docs/security.md."
+        )
+    if not settings.require_hardened:
+        return
+    if lab_secret or len(settings.secret_key) < 32:
+        raise PrerequisiteError(
+            "SWITCHEROO_REQUIRE_HARDENED=true requires SWITCHEROO_SECRET_KEY of at least "
+            "32 characters (not the lab default). See docs/security.md."
+        )
+    if not settings.data_key or len(settings.data_key) < 32:
+        raise PrerequisiteError(
+            "SWITCHEROO_REQUIRE_HARDENED=true requires SWITCHEROO_DATA_KEY (32+ characters) "
+            "so device secrets stay encrypted if the session key is rotated. See docs/security.md."
+        )
+    if settings.public_url and not settings.public_url.startswith("https://"):
+        raise PrerequisiteError(
+            "SWITCHEROO_REQUIRE_HARDENED=true requires SWITCHEROO_PUBLIC_URL to be https:// "
+            "when set, so Teams links and cookies are not sent over cleartext HTTP."
+        )
+    if not settings.cookie_secure:
+        raise PrerequisiteError(
+            "SWITCHEROO_REQUIRE_HARDENED=true requires SWITCHEROO_COOKIE_SECURE=true "
+            "(or an https SWITCHEROO_PUBLIC_URL) so session cookies are not sent over HTTP."
         )
 
 

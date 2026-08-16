@@ -7,6 +7,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
+from app.csrf import ensure_csrf_token
 from app.models import utcnow
 from app.services.uptime import format_connected_for, short_if_name
 
@@ -52,6 +53,7 @@ def render(request: Request, name: str, status_code: int = 200, **context):
     context.setdefault("request", request)
     context.setdefault("settings", settings)
     context.setdefault("flashes", request.session.pop("flashes", []))
+    context.setdefault("csrf_token", ensure_csrf_token(request))
     return templates.TemplateResponse(request, name, context, status_code=status_code)
 
 

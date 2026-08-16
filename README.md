@@ -165,17 +165,18 @@ python -m pytest --timeout=30 --timeout-method=thread
 ```
 app/            FastAPI app (uvicorn app.main:app)
 app/drivers/    SwitchDriver: simulator + cisco_iosxe + ServiceNow Table API + Teams webhook (dry-run default)
-docs/           IAM / ServiceNow POC brief + Teams webhook setup
+docs/           IAM / ServiceNow POC brief, Teams webhook setup, security brief for Cyber
 app/services/   polling, cooldown, approvals
 app/templates/  Jinja2 + HTMX
 tests/
 data/           sqlite + switcheroo.log (created at runtime, not committed)
 ```
 
+Give this to Cyber: **[docs/security.md](docs/security.md)** (bind address, hashing, encrypted device secrets, CSRF, cookies, residual risk).
+
 ## Gaps (v1)
 
 - Entra ID / SSO is not implemented (local users only).
 - ServiceNow live Table API is implemented but **off** until an integration user exists. Arup incident `state` / `close_code` values are unverified.
 - Real 9300 YANG paths may need site-specific adjustment once RESTCONF is pointed at a lab switch.
-- Device passwords in SQLite are stored as-is for the lab; use an OS secret store before production.
-- No HTTPS terminator in-process; put one in front if you bind beyond loopback.
+- No HTTPS terminator in-process; put one in front if you bind beyond loopback. Set `SWITCHEROO_REQUIRE_HARDENED=true` before a shared deploy.

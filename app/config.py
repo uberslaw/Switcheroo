@@ -13,6 +13,9 @@ if _DOTENV_PATH.exists() and os.getenv("SWITCHEROO_TESTING") != "1":
     load_dotenv(_DOTENV_PATH)
 
 
+LAB_SECRET_KEY = "change-me-lab-only-not-for-production"
+
+
 def _as_bool(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
@@ -81,6 +84,13 @@ class Settings:
     cisco_snmp_community: str
     cisco_snmp_port: int
     cisco_connect_timeout: int
+    data_key: str
+    csrf_enabled: bool
+    login_rate_limit: bool
+    cookie_secure: bool
+    session_max_age: int
+    trust_x_forwarded_for: bool
+    require_hardened: bool
 
     @property
     def servicenow_live(self) -> bool:
@@ -124,10 +134,9 @@ def get_settings() -> Settings:
     if driver not in {"simulator", "cisco_iosxe"}:
         raise ValueError("SWITCHEROO_DRIVER must be 'simulator' or 'cisco_iosxe'.")
 
-    secret = os.getenv("SWITCHEROO_SECRET_KEY") or "change-me-lab-only-not-for-production"
-    if not testing and secret == "change-me-lab-only-not-for-production":
-        # Allowed for first-run lab; called out in README and the login page.
-        pass
+    secret = os.getenv("SWITCHEROO_SECRET_KEY") or LAB_SECRET_KEY
+    public_url = (os.getenv("SWITCHEROO_PUBLIC_URL") or "").strip().rstrip("/")
+    cookie_secure = _as_bool(os.getenv("SWITCHEROO_COOKIE_SECURE"), public_url.startswith("https://"))
 
     return Settings(
         testing=testing,
@@ -158,7 +167,7 @@ def get_settings() -> Settings:
         servicenow_state_cancelled=(os.getenv("SERVICENOW_STATE_CANCELLED") or "8").strip(),
         servicenow_close_code=(os.getenv("SERVICENOW_CLOSE_CODE") or "Solved (Permanently)").strip(),
         servicenow_http_timeout=max(1, min(15, _as_int(os.getenv("SERVICENOW_HTTP_TIMEOUT"), 10))),
-        public_url=(os.getenv("SWITCHEROO_PUBLIC_URL") or "").strip().rstrip("/"),
+        public_url=public_url,
         teams_enabled=_as_bool(os.getenv("TEAMS_ENABLED"), False),
         teams_dry_run=_as_bool(os.getenv("TEAMS_DRY_RUN"), True),
         teams_webhook_url=(os.getenv("TEAMS_WEBHOOK_URL") or "").strip(),
@@ -171,4 +180,11 @@ def get_settings() -> Settings:
         cisco_snmp_community=os.getenv("CISCO_SNMP_COMMUNITY") or "",
         cisco_snmp_port=_as_int(os.getenv("CISCO_SNMP_PORT"), 161),
         cisco_connect_timeout=_as_int(os.getenv("CISCO_CONNECT_TIMEOUT"), 10),
+        data_key=(os.getenv("SWITCHEROO_DATA_KEY") or "").strip(),
+        csrf_enabled=_as_bool(os.getenv("SWITCHEROO_CSRF"), not testing),
+        login_rate_limit=_as_bool(os.getenv("SWITCHEROO_LOGIN_RATE_LIMIT"), not testing),
+        cookie_secure=cookie_secure,
+        session_max_age=max(300, min(86400, _as_int(os.getenv("SWITCHEROO_SESSION_MAX_AGE"), 28800))),
+        trust_x_forwarded_for=_as_bool(os.getenv("SWITCHEROO_TRUST_X_FORWARDED_FOR"), False),
+        require_hardened=_as_bool(os.getenv("SWITCHEROO_REQUIRE_HARDENED"), False),
     )

@@ -9,11 +9,13 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import get_settings
+from app.csrf import CSRFMiddleware
 from app.db import SessionLocal, init_db
 from app.logging_setup import setup_logging
 from app.poller import start_poller, stop_poller
 from app.prereq import check_prerequisites
 from app.routers import admin, api, pages
+from app.security_headers import SecurityHeadersMiddleware
 from app.seed import seed
 
 log = logging.getLogger("switcheroo")
@@ -49,7 +51,15 @@ async def lifespan(_app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     application = FastAPI(title="Switcheroo", lifespan=lifespan, docs_url=None, redoc_url=None)
-    application.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax")
+    application.add_middleware(CSRFMiddleware)
+    application.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.secret_key,
+        same_site="lax",
+        https_only=settings.cookie_secure,
+        max_age=settings.session_max_age,
+    )
+    application.add_middleware(SecurityHeadersMiddleware)
     application.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     application.include_router(pages.router)
     application.include_router(api.router)

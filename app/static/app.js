@@ -1,6 +1,30 @@
 /* Pause HTMX swaps that would remount a focused select/input/textarea.
    Timer polls are not user-trusted; a real click (new port) still goes through. */
 (function () {
+  function csrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute("content") : "";
+  }
+
+  document.body.addEventListener("submit", function (evt) {
+    const form = evt.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    if ((form.method || "").toLowerCase() !== "post") return;
+    if (form.querySelector('input[name="csrf_token"]')) return;
+    const token = csrfToken();
+    if (!token) return;
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "csrf_token";
+    input.value = token;
+    form.appendChild(input);
+  });
+
+  document.body.addEventListener("htmx:configRequest", function (evt) {
+    const token = csrfToken();
+    if (token) evt.detail.headers["X-CSRF-Token"] = token;
+  });
+
   function focusedField() {
     const active = document.activeElement;
     if (!active) return null;

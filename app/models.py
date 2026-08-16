@@ -68,7 +68,7 @@ class Switch(Base):
     location: Mapped[str] = mapped_column(String(256), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
     username: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    password: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    password: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     driver_override: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     last_status_poll_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_daily_poll_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
