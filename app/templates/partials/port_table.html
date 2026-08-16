@@ -1,0 +1,104 @@
+<div id="port-table" class="table-wrap"
+     hx-get="/partials/switches/{{ switch.id }}/ports"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML">
+  <table class="ports">
+    <thead>
+      <tr>
+        <th>Port</th>
+        <th>Purpose</th>
+        <th>Link</th>
+        <th>Admin</th>
+        <th>VLAN</th>
+        <th>MAC</th>
+        <th>IP</th>
+        <th>ISE</th>
+        <th>Polled</th>
+        <th>Source</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      {% set p = row.port %}
+      <tr class="{% if p.admin_status == 'down' %}is-shut{% elif p.oper_status != 'up' %}is-down{% endif %}">
+        <td>
+          <div class="mono">{{ p.if_name.replace('GigabitEthernet', 'Gi') }}</div>
+          <div class="muted">{{ p.friendly_label or '—' }}</div>
+        </td>
+        <td><span class="purpose">{{ p.purpose|purpose }}</span></td>
+        <td>
+          <span class="light {{ p.oper_status }}">{{ p.oper_status }}</span>
+          <div class="tiny muted">{{ p.last_status_poll_at|ago }}</div>
+        </td>
+        <td>
+          {% if p.admin_status == 'down' %}
+          <span class="light shut">shutdown</span>
+          {% else %}
+          <span class="muted">{{ p.admin_status }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if p.vlan_id is not none %}
+          <span class="mono">{{ p.vlan_id }}</span>
+          <span class="muted">{{ p.vlan_name or '' }}</span>
+          {% else %}
+          <span class="muted">—</span>
+          {% endif %}
+        </td>
+        <td class="mono">{{ p.mac_address or '—' }}</td>
+        <td class="mono">{{ p.ip_address or '—' }}</td>
+        <td>
+          {% if p.ise_status %}
+          <span class="ise ise-{{ p.ise_status }}">{{ p.ise_status }}</span>
+          {% else %}
+          <span class="muted">—</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="tiny">status {{ p.last_status_poll_at|ago }}</div>
+          <div class="tiny">detail {{ p.last_detail_poll_at|ago }}</div>
+          {% if p.last_poll_error %}<div class="tiny poll-error">{{ p.last_poll_error }}</div>{% endif %}
+        </td>
+        <td><span class="source source-{{ p.data_source }}">{{ p.data_source }}</span></td>
+        <td class="actions">
+          <form method="post" action="/switches/{{ switch.id }}/ports/{{ p.id }}/refresh">
+            <button class="btn btn-small" type="submit" {% if not row.can_refresh %}disabled{% endif %}>
+              {% if row.can_refresh %}Refresh{% else %}Wait {{ row.cooldown }}s{% endif %}
+            </button>
+          </form>
+          <form method="post" action="/switches/{{ switch.id }}/ports/{{ p.id }}/request/vlan" class="inline-vlan">
+            <select name="vlan_id" required>
+              <option value="" disabled selected>VLAN</option>
+              {% for v in vlans %}
+              <option value="{{ v.vlan_id }}">{{ v.vlan_id }} {{ v.vlan_name }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-small" type="submit">Request</button>
+          </form>
+          {% if p.admin_status == 'down' %}
+          <form method="post" action="/switches/{{ switch.id }}/ports/{{ p.id }}/request/no-shutdown">
+            <button class="btn btn-small" type="submit">Bring online</button>
+          </form>
+          {% else %}
+          <form method="post" action="/switches/{{ switch.id }}/ports/{{ p.id }}/request/bounce">
+            <button class="btn btn-small" type="submit">Bounce</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/switches/{{ switch.id }}/ports/{{ p.id }}/troubleshoot">
+            <button class="btn btn-small btn-warn" type="submit" {% if session %}disabled{% endif %}>Troubleshoot</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="tiny muted table-note">
+    Source: <strong>live</strong> = on-demand refresh (60s shared cooldown per port),
+    <strong>daily</strong> = scheduled VLAN/MAC/IP/ISE sweep,
+    <strong>troubleshoot</strong> = 10s session on one port,
+    <strong>write</strong> = after an approved change,
+    <strong>seed</strong> = lab starting state.
+    Refresh/bounce/VLAN do not hit the switch until Networks approves writes; refresh is a read.
+  </p>
+</div>

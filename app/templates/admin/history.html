@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}History · Switcheroo{% endblock %}
+{% block body %}
+<h1>Request history</h1>
+<table class="ports">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Created</th>
+      <th>Who</th>
+      <th>Switch / port</th>
+      <th>Type</th>
+      <th>Status</th>
+      <th>Reviewer</th>
+      <th>Note / error</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.id }}</td>
+      <td>{{ r.created_at|dt }}</td>
+      <td>{{ r.requester.username }}</td>
+      <td>{{ r.switch.name }} <span class="mono">{{ r.port.if_name.replace('GigabitEthernet', 'Gi') }}</span></td>
+      <td>{{ r.request_type }}{% if r.requested_vlan_id %} {{ r.requested_vlan_id }}{% endif %}</td>
+      <td><span class="source source-{{ r.status }}">{{ r.status }}</span></td>
+      <td>{{ r.reviewer.username if r.reviewer else '—' }}</td>
+      <td class="tiny">{{ r.review_note or '' }} {% if r.error_message %}<span class="poll-error">{{ r.error_message }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

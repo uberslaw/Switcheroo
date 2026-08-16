@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Access · Switcheroo{% endblock %}
+{% block body %}
+<h1>Users and switch access</h1>
+<p class="muted">Client Services only see switches you grant. Networks sees everything.</p>
+
+<section class="panel">
+  <h2>Add local user</h2>
+  <form method="post" action="/admin/users" class="inline-vlan">
+    <input name="username" required placeholder="username">
+    <input type="password" name="password" required placeholder="password" autocomplete="new-password">
+    <input name="display_name" placeholder="display name">
+    <select name="role">
+      {% for role in roles %}<option value="{{ role }}">{{ role }}</option>{% endfor %}
+    </select>
+    <button class="btn btn-small btn-primary" type="submit">Create</button>
+  </form>
+</section>
+
+<table class="ports">
+  <thead>
+    <tr>
+      <th>User</th>
+      <th>Role</th>
+      {% for s in switches %}
+      <th>{{ s.name }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}<div class="muted">{{ u.display_name }}</div></td>
+      <td>{{ u.role }}</td>
+      {% for s in switches %}
+      <td>
+        {% if u.role == 'networks' %}
+        <span class="muted">all</span>
+        {% else %}
+        <form method="post" action="/admin/permissions">
+          <input type="hidden" name="user_id" value="{{ u.id }}">
+          <input type="hidden" name="switch_id" value="{{ s.id }}">
+          {% if (u.id, s.id) in links %}
+          <input type="hidden" name="granted" value="0">
+          <button class="btn btn-small btn-primary" type="submit">Granted</button>
+          {% else %}
+          <input type="hidden" name="granted" value="1">
+          <button class="btn btn-small" type="submit">Grant</button>
+          {% endif %}
+        </form>
+        {% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

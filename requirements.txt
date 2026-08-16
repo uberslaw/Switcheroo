@@ -1,0 +1,14 @@
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+sqlalchemy==2.0.43
+jinja2==3.1.6
+python-multipart==0.0.20
+python-dotenv==1.1.1
+apscheduler==3.11.0
+httpx==0.28.1
+itsdangerous==2.2.0
+pytest==8.4.1
+pytest-timeout==2.4.0
+openpyxl==3.1.5
+netmiko==4.6.0
+pysnmp==7.1.21

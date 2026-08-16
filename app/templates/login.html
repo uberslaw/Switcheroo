@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Switcheroo</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+  <div class="login-card">
+    <div class="brand login-brand">
+      <span class="brand-mark">SW</span>
+      <div>
+        <div class="brand-name">Switcheroo</div>
+        <div class="brand-sub">Catalyst 9300 port desk</div>
+      </div>
+    </div>
+    <p class="lede">Sign in with your Switcheroo account. Client Services can view permitted switches and queue changes. Networks approves writes.</p>
+    {% for item in flashes %}
+    <div class="flash flash-{{ item.category }}">{{ item.message }}</div>
+    {% endfor %}
+    <form method="post" action="/login" class="stack">
+      <label>Username
+        <input type="text" name="username" autocomplete="username" required autofocus>
+      </label>
+      <label>Password
+        <input type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button class="btn btn-primary" type="submit">Sign in</button>
+    </form>
+    <aside class="lab-note">
+      <strong>Lab defaults — not production.</strong>
+      Seeded accounts: <code>networks</code> / <code>networks</code> (admin)
+      and <code>cs</code> / <code>cs</code> (Client Services).
+      Change these before any shared deploy. Auth is local username/password; Entra SSO is not in v1.
+    </aside>
+  </div>
+</body>
+</html>

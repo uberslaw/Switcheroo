@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{% if switch %}Edit {{ switch.name }}{% else %}Add switch{% endif %} · Switcheroo{% endblock %}
+{% block body %}
+<a class="crumb" href="/admin/inventory">← Inventory</a>
+<h1>{% if switch %}Edit {{ switch.name }}{% else %}Add switch{% endif %}</h1>
+<form method="post" class="form-grid">
+  <label>Name
+    <input name="name" required value="{{ switch.name if switch else '' }}">
+  </label>
+  <label>Management IP
+    <input name="management_ip" value="{{ switch.management_ip if switch else '' }}" placeholder="Use a real mgmt address only for on-box devices">
+  </label>
+  <label>Location / notes
+    <input name="location" value="{{ switch.location if switch else '' }}">
+  </label>
+  <label>Notes
+    <textarea name="notes" rows="3">{{ switch.notes if switch else '' }}</textarea>
+  </label>
+  <label>Device username (dedicated TACACS/local — optional)
+    <input name="username" value="" placeholder="{% if switch and switch.username %}set — leave blank to keep{% endif %}" autocomplete="off">
+  </label>
+  <label>Device password
+    <input type="password" name="password" value="" autocomplete="new-password" placeholder="{% if switch and switch.password %}set — leave blank to keep{% endif %}">
+  </label>
+  <label>Driver override
+    <select name="driver_override">
+      <option value="" {% if not switch or not switch.driver_override %}selected{% endif %}>Inherit ({{ settings.driver }})</option>
+      <option value="simulator" {% if switch and switch.driver_override == 'simulator' %}selected{% endif %}>simulator</option>
+      <option value="cisco_iosxe" {% if switch and switch.driver_override == 'cisco_iosxe' %}selected{% endif %}>cisco_iosxe</option>
+    </select>
+  </label>
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn" href="/admin/inventory">Cancel</a>
+  </div>
+</form>
+<p class="lab-note">cisco_iosxe is used only when this row has IP + username + password. Otherwise Switcheroo stays on the simulator so a missing secret cannot hang the site.</p>
+{% endblock %}

@@ -1,0 +1,73 @@
+<aside id="port-pane" class="port-pane">
+  {% if not selected %}
+  <div class="pane-empty">
+    <strong>Click a port on the switch</strong>
+    <p class="muted">The right pane shows live status, VLAN, MAC/IP, ISE, and connected uptime for the selected interface.</p>
+  </div>
+  {% else %}
+  {% set p = selected %}
+  {% set v = selected_view %}
+  <div id="pane-status"
+       hx-get="/partials/switches/{{ switch.id }}/pane-status?port={{ p.id }}"
+       hx-trigger="every 2s, refreshPaneStatus from:body"
+       hx-swap="innerHTML">
+    {% include "partials/pane_status.html" %}
+  </div>
+
+  <div class="pane-footer">
+  <div class="pane-actions" id="pane-actions">
+    <form method="post" action="/switches/{{ switch.id }}/ports/{{ p.id }}/refresh">
+      <button class="btn btn-primary" type="submit" {% if not v.can_refresh %}disabled{% endif %}>
+        {% if v.can_refresh %}Refresh{% else %}Refresh ({{ v.cooldown }}s){% endif %}
+      </button>
+    </form>
+    <form method="post" action="/switches/{{ switch.id }}/ports/{{ p.id }}/troubleshoot">
+      <button class="btn btn-warn" type="submit" {% if session %}disabled{% endif %}>Troubleshoot</button>
+    </form>
+    <form method="post"
+          action="/switches/{{ switch.id }}/ports/{{ p.id }}/request/vlan"
+          class="stack-tight"
+          hx-post="/switches/{{ switch.id }}/ports/{{ p.id }}/request/vlan"
+          hx-target="#toast-slot"
+          hx-swap="innerHTML">
+      <label>Request VLAN change
+        <select name="vlan_id" required>
+          <option value="" disabled selected>Select VLAN</option>
+          {% for vlan in vlans %}
+          <option value="{{ vlan.vlan_id }}">{{ vlan.vlan_id }} {{ vlan.vlan_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="btn" type="submit">Request VLAN change</button>
+    </form>
+    {% if p.admin_status == 'down' %}
+    <form method="post" action="/switches/{{ switch.id }}/ports/{{ p.id }}/request/no-shutdown">
+      <button class="btn" type="submit">Bring online</button>
+    </form>
+    {% else %}
+    <form method="post" action="/switches/{{ switch.id }}/ports/{{ p.id }}/request/bounce">
+      <button class="btn" type="submit" title="Shut the port down and bring it back up">Bounce</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if user.role == 'networks' %}
+  <form method="post" action="/admin/switches/{{ switch.id }}/ports/{{ p.id }}" class="pane-admin" id="pane-admin">
+    <h3>Networks · purpose</h3>
+    <input type="hidden" name="next" value="/switches/{{ switch.id }}?port={{ p.id }}">
+    <label>Purpose
+      <select name="purpose">
+        {% for item in purposes %}
+        <option value="{{ item }}" {% if item == p.purpose %}selected{% endif %}>{{ item|purpose }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Friendly label
+      <input name="friendly_label" value="{{ p.friendly_label }}">
+    </label>
+    <button class="btn btn-primary" type="submit">Save purpose</button>
+  </form>
+  {% endif %}
+  </div>
+  {% endif %}
+</aside>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Switcheroo{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">SW</span>
+      <div>
+        <div class="brand-name">Switcheroo</div>
+        <div class="brand-sub">Client Services port desk</div>
+      </div>
+    </div>
+    {% if user %}
+    <nav class="nav">
+      <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Switches</a>
+      <a href="/requests" class="{% if request.url.path == '/requests' %}active{% endif %}">Requests</a>
+      {% if user.role == 'networks' %}
+      <a href="/admin/inventory" class="{% if '/admin/inventory' in request.url.path or '/admin/switches' in request.url.path %}active{% endif %}">Inventory</a>
+      <a href="/admin/approvals" class="{% if '/admin/approvals' in request.url.path %}active{% endif %}">Approvals</a>
+      <a href="/admin/policies" class="{% if '/admin/policies' in request.url.path %}active{% endif %}">Policies</a>
+      <a href="/admin/history" class="{% if '/admin/history' in request.url.path %}active{% endif %}">History</a>
+      <a href="/admin/permissions" class="{% if '/admin/permissions' in request.url.path %}active{% endif %}">Access</a>
+      {% endif %}
+    </nav>
+    <div class="who">
+      <span class="who-name">{{ user.display_name or user.username }}</span>
+      <span class="role-pill">{{ user.role }}</span>
+      <form method="post" action="/logout"><button class="btn btn-ghost" type="submit">Sign out</button></form>
+    </div>
+    {% endif %}
+  </header>
+
+  {% if user %}
+  <div id="ts-slot"
+       hx-get="/partials/troubleshoot"
+       hx-trigger="load, every 2s"
+       hx-swap="innerHTML">
+  </div>
+  {% endif %}
+
+  <div id="toast-slot" class="toast-slot" aria-live="polite">
+    {% for item in flashes if item.category == 'toast' %}
+    <div class="toast toast-pending" role="status"><strong>{{ item.message }}</strong></div>
+    {% endfor %}
+  </div>
+
+  <main class="{% block main_class %}wrap{% endblock %}">
+    {% for item in flashes if item.category != 'toast' %}
+    <div class="flash flash-{{ item.category }}">{{ item.message }}</div>
+    {% endfor %}
+    {% block body %}{% endblock %}
+  </main>
+
+  <footer class="foot">
+    <span>Internal use. Writes require Networks approval.</span>
+    <span>Logs: data/switcheroo.log</span>
+    <span>Driver: {{ settings.driver }}</span>
+  </footer>
+</body>
+</html>

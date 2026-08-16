@@ -1,0 +1,4 @@
+<div class="toast toast-{{ category|default('pending') }}" role="status">
+  <strong>{{ title }}</strong>
+  {% if detail %}<div class="toast-detail">{{ detail }}</div>{% endif %}
+</div>

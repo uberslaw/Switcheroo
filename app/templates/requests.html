@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Requests · Switcheroo{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>Change requests</h1>
+    <p class="muted">
+      Past and present VLAN (and other) requests.
+      {% if user.role == 'networks' %}All offices.{% else %}Offices / switches you support.{% endif %}
+      CS cannot approve here — Networks uses the approval queue.
+    </p>
+  </div>
+  {% if user.role == 'networks' %}
+  <a class="btn btn-primary" href="/admin/approvals">Approval queue</a>
+  {% endif %}
+</div>
+
+<form method="get" action="/requests" class="filter-bar">
+  <label>Status
+    <select name="status">
+      <option value="">All</option>
+      <option value="pending" {% if filters.status == 'pending' %}selected{% endif %}>Pending</option>
+      <option value="approved" {% if filters.status == 'approved' %}selected{% endif %}>Approved</option>
+      <option value="auto" {% if filters.status == 'auto' %}selected{% endif %}>Auto-approved</option>
+      <option value="denied" {% if filters.status == 'denied' %}selected{% endif %}>Denied</option>
+      <option value="failed" {% if filters.status == 'failed' %}selected{% endif %}>Failed</option>
+    </select>
+  </label>
+  <label>Switch
+    <select name="switch_id">
+      <option value="">All</option>
+      {% for s in switches %}
+      <option value="{{ s.id }}" {% if filters.switch_id|string == s.id|string %}selected{% endif %}>{{ s.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Office / location
+    <select name="office">
+      <option value="">All</option>
+      {% for loc in offices %}
+      <option value="{{ loc }}" {% if filters.office == loc %}selected{% endif %}>{{ loc }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>From
+    <input type="date" name="date_from" value="{{ filters.date_from }}">
+  </label>
+  <label>To
+    <input type="date" name="date_to" value="{{ filters.date_to }}">
+  </label>
+  <button class="btn btn-primary" type="submit">Filter</button>
+</form>
+
+<table class="ports">
+  <thead>
+    <tr>
+      <th>When</th>
+      <th>Who</th>
+      <th>Office</th>
+      <th>Switch / port</th>
+      <th>Type</th>
+      <th>From → to</th>
+      <th>Status</th>
+      <th>Decided by</th>
+      <th>Decided</th>
+      <th>ServiceNow</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ r.created_at|dt }}</td>
+      <td>{{ r.requester.username }}</td>
+      <td>{{ r.switch.location or "—" }}</td>
+      <td>
+        {% if r.status == 'pending' and user.role == 'networks' %}
+        <a href="/admin/approvals">{{ r.switch.name }}</a>
+        {% else %}
+        <a href="/switches/{{ r.switch_id }}?port={{ r.port_id }}">{{ r.switch.name }}</a>
+        {% endif %}
+        <div class="mono">{{ r.port.if_name|giface }}</div>
+      </td>
+      <td>
+        {% if r.request_type == 'vlan_change' %}VLAN
+        {% elif r.request_type == 'bounce' %}Bounce
+        {% elif r.request_type == 'no_shutdown' %}No-shutdown
+        {% else %}{{ r.request_type }}{% endif %}
+      </td>
+      <td>
+        {% if r.request_type == 'vlan_change' %}
+        {{ r.from_vlan_id or "—" }} {{ r.from_vlan_name or "" }}
+        → {{ r.requested_vlan_id or "—" }} {{ r.requested_vlan_name or "" }}
+        {% else %}
+        —
+        {% endif %}
+      </td>
+      <td>
+        {% if r.status == 'rejected' %}
+        <span class="source source-rejected">denied</span>
+        {% elif r.status == 'executed' %}
+        <span class="source source-executed">approved</span>
+        {% else %}
+        <span class="source source-{{ r.status }}">{{ r.status }}</span>
+        {% endif %}
+      </td>
+      <td>{{ r.reviewer.username if r.reviewer else "—" }}</td>
+      <td>{{ r.reviewed_at|dt if r.reviewed_at else "—" }}</td>
+      <td class="mono">{{ r.servicenow_ticket or "—" }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="10" class="muted">No requests match these filters.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

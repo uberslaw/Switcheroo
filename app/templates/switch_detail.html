@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ switch.name }} · Switcheroo{% endblock %}
+{% block main_class %}wrap wrap-wide{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <a class="crumb" href="/">← Switches</a>
+    <h1>{{ switch.name }}</h1>
+    <p class="muted">{{ switch.location }} · <span class="mono">{{ switch.management_ip }}</span>
+      {% if switch.notes %} · {{ switch.notes }}{% endif %}
+    </p>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-primary" href="/switches/{{ switch.id }}/export.xlsx">Export XLSX</a>
+    {% if user.role == 'networks' %}
+    <a class="btn" href="/admin/switches/{{ switch.id }}/ports">Bulk purpose editor</a>
+    <a class="btn" href="/admin/switches/{{ switch.id }}/edit">Edit switch</a>
+    {% endif %}
+    <div class="poll-chip">
+      <div>Status poll: {{ switch.last_status_poll_at|ago }}</div>
+      <div>Next: {% if switch.next_status_poll_at %}{{ switch.next_status_poll_at|dt }}{% else %}pending first cycle{% endif %}</div>
+      <div>Daily detail: {{ switch.last_daily_poll_at|ago }}</div>
+    </div>
+  </div>
+</div>
+{% if switch.last_poll_error %}
+<div class="flash flash-error">Last poll error: {{ switch.last_poll_error }}</div>
+{% endif %}
+
+{% include "partials/workspace.html" %}
+{% endblock %}

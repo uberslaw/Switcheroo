@@ -1,0 +1,16 @@
+<div id="switch-workspace" class="desk">
+  <div class="desk-main">
+    <div id="faceplate-live"
+         hx-get="/partials/switches/{{ switch.id }}/faceplate{% if selected %}?port={{ selected.id }}{% endif %}"
+         hx-trigger="every 2s"
+         hx-swap="innerHTML">
+      {% include "partials/faceplate.html" %}
+    </div>
+    <div class="led-legend" aria-label="Port LED legend">
+      <span><i class="leg-led light-green"></i> Light green — link up / active</span>
+      <span><i class="leg-led dark-green"></i> Dark green — not connected (admin up, no link)</span>
+      <span><i class="leg-led red"></i> Red — problem or shutdown</span>
+    </div>
+  </div>
+  {% include "partials/port_pane.html" %}
+</div>

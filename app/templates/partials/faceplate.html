@@ -1,0 +1,65 @@
+<div class="chassis" aria-label="Catalyst 9300 faceplate">
+  <div class="chassis-rail"></div>
+  <div class="bezel">
+    <div class="sys-block">
+      <div class="sys-brand">
+        <div class="sys-model">C9300-48</div>
+        <div class="sys-name" title="{{ switch.name }}">{{ switch.name }}</div>
+      </div>
+      <div class="sys-leds" title="Chassis status LEDs (decorative)">
+        <span class="sys-led on"><i></i>SYST</span>
+        <span class="sys-led on"><i></i>STAT</span>
+        <span class="sys-led dim"><i></i>SPEED</span>
+        <span class="sys-led dim"><i></i>DUPLEX</span>
+        <span class="sys-led on"><i></i>STACK</span>
+      </div>
+      <button type="button" class="mode-btn" tabindex="-1" disabled>MODE</button>
+    </div>
+
+    <div class="port-field">
+      {% for group in groups %}
+      <div class="port-block" aria-label="Ports {{ loop.index0 * 12 + 1 }}–{{ loop.index0 * 12 + 12 }}">
+        {% for pair in group %}
+        {% set top, bot = pair %}
+        <div class="port-col">
+          {% for p in (top, bot) %}
+          {% if p %}
+          {% set v = views[p.id] %}
+          <button type="button"
+                  class="rj45 led-{{ v.led }} {% if selected and selected.id == p.id %}selected{% endif %}"
+                  title="{{ p.if_name|giface }} · {{ p.purpose|purpose }}{% if p.friendly_label %} ({{ p.friendly_label }}){% endif %} · {{ p.oper_status }}{% if p.admin_status == 'down' %} / shutdown{% endif %}"
+                  hx-get="/partials/switches/{{ switch.id }}/workspace?port={{ p.id }}"
+                  hx-target="#switch-workspace"
+                  hx-swap="outerHTML">
+            <span class="jack-led"></span>
+            <span class="jack">
+              <span class="clip"></span>
+              <span class="pins"></span>
+            </span>
+            <span class="jack-num">{{ p.if_index }}</span>
+          </button>
+          {% else %}
+          <span class="rj45 empty"></span>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="sfp-bay" title="Uplink / network-module cages (placeholder — seed is 48 copper)">
+      <div class="sfp-label">NM</div>
+      {% for n in range(1, 5) %}
+      <div class="sfp-cage">
+        <span class="sfp-slot"></span>
+        <span class="sfp-num">U{{ n }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="chassis-foot">
+    <span>48× 1G RJ45 · odd top / even bottom</span>
+    <span class="mono">{{ switch.management_ip }}</span>
+  </div>
+</div>

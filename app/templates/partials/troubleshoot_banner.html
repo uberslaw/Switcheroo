@@ -1,0 +1,22 @@
+{% if session %}
+<div class="ts-banner" id="ts-banner">
+  <div>
+    <strong>Troubleshooting mode</strong>
+    — {{ session.switch.name }}
+    <span class="mono">{{ session.port.if_name.replace('GigabitEthernet', 'Gi') }}</span>
+    {% if session.port.friendly_label %} ({{ session.port.friendly_label }}){% endif %}
+    · link <span class="light {{ session.port.oper_status }}">{{ session.port.oper_status }}</span>
+    · VLAN {{ session.port.vlan_id or '—' }} {{ session.port.vlan_name or '' }}
+    · MAC {{ session.port.mac_address or '—' }}
+    · IP {{ session.port.ip_address or '—' }}
+    · ISE {{ session.port.ise_status or '—' }}
+    {% if session.last_error %}<span class="poll-error"> · {{ session.last_error }}</span>{% endif %}
+  </div>
+  <div class="ts-right">
+    <span class="countdown">{{ remaining }}s left</span>
+    <form method="post" action="/troubleshoot/{{ session.id }}/stop">
+      <button class="btn btn-small" type="submit">Stop now</button>
+    </form>
+  </div>
+</div>
+{% endif %}

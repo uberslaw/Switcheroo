@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Ports · {{ switch.name }}{% endblock %}
+{% block body %}
+<a class="crumb" href="/admin/inventory">← Inventory</a>
+<h1>Port purposes · {{ switch.name }}</h1>
+<p class="muted">Names and purposes are what Client Services see. Status still comes from the poller.</p>
+
+<section class="panel">
+  <h2>VLANs on this switch</h2>
+  <ul class="vlan-list">
+    {% for v in switch.vlans %}
+    <li><span class="mono">{{ v.vlan_id }}</span> {{ v.vlan_name }}</li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="/admin/switches/{{ switch.id }}/vlans" class="inline-vlan">
+    <input type="number" name="vlan_id" min="1" max="4094" required placeholder="id">
+    <input type="text" name="vlan_name" required placeholder="name">
+    <button class="btn btn-small" type="submit">Add / update VLAN</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Add interface</h2>
+  <form method="post" action="/admin/switches/{{ switch.id }}/ports/add" class="inline-vlan">
+    <input name="if_name" required placeholder="GigabitEthernet1/0/49">
+    <input type="number" name="if_index" required placeholder="index">
+    <select name="purpose">
+      {% for p in purposes %}<option value="{{ p }}">{{ p|purpose }}</option>{% endfor %}
+    </select>
+    <input name="friendly_label" placeholder="friendly label">
+    <button class="btn btn-small" type="submit">Add port</button>
+  </form>
+</section>
+
+<table class="ports">
+  <thead>
+    <tr><th>If</th><th>Purpose</th><th>Label</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for port in ports %}
+    <tr>
+      <td class="mono">{{ port.if_name }}</td>
+      <td colspan="3">
+        <form method="post" action="/admin/switches/{{ switch.id }}/ports/{{ port.id }}" class="inline-vlan">
+          <select name="purpose">
+            {% for p in purposes %}
+            <option value="{{ p }}" {% if p == port.purpose %}selected{% endif %}>{{ p|purpose }}</option>
+            {% endfor %}
+          </select>
+          <input name="friendly_label" value="{{ port.friendly_label }}">
+          <button class="btn btn-small" type="submit">Save</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,97 @@
+from __future__ import annotations
+
+import sqlite3
+import sys
+from pathlib import Path
+
+from app.config import Settings
+
+MIN_PYTHON = (3, 12)
+
+
+class PrerequisiteError(SystemExit):
+    """Raised (as SystemExit) when the process cannot start safely."""
+
+
+def check_prerequisites(settings: Settings) -> None:
+    """Fail fast with a clear message before the web app or poller starts."""
+    if sys.version_info < MIN_PYTHON:
+        raise PrerequisiteError(
+            f"Switcheroo requires Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]} or newer. "
+            f"This interpreter is {sys.version.split()[0]}. "
+            "Install a supported Python and recreate the virtual environment."
+        )
+
+    data_dir: Path = settings.data_dir
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise PrerequisiteError(
+            f"Cannot create data directory '{data_dir}': {exc}. "
+            "Check NTFS permissions or set SWITCHEROO_DATA_DIR to a writable path."
+        ) from exc
+
+    probe = data_dir / ".write_probe"
+    try:
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink(missing_ok=True)
+    except OSError as exc:
+        raise PrerequisiteError(
+            f"Data directory '{data_dir}' is not writable: {exc}."
+        ) from exc
+
+    log_parent = settings.log_file.parent
+    try:
+        log_parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise PrerequisiteError(
+            f"Cannot create log directory '{log_parent}': {exc}."
+        ) from exc
+
+    if settings.database_url.startswith("sqlite"):
+        _check_sqlite(settings.database_url)
+
+    _check_servicenow(settings)
+
+
+def _check_servicenow(settings: Settings) -> None:
+    """Live Table API requires instance + dedicated user. Dry-run never calls SN."""
+    if not settings.servicenow_enabled or settings.servicenow_dry_run:
+        return
+    missing: list[str] = []
+    if not settings.servicenow_instance_url:
+        missing.append("SERVICENOW_INSTANCE")
+    if not settings.servicenow_username:
+        missing.append("SERVICENOW_USERNAME")
+    if not settings.servicenow_password:
+        missing.append("SERVICENOW_PASSWORD")
+    if missing:
+        raise PrerequisiteError(
+            "SERVICENOW_ENABLED=true and SERVICENOW_DRY_RUN=false but credentials are missing: "
+            + ", ".join(missing)
+            + ". Set a dedicated integration user (not a personal login), or set "
+            "SERVICENOW_DRY_RUN=true until IAM issues the account. "
+            "Switcheroo will not call ServiceNow anonymously. See docs/servicenow-poc.md."
+        )
+
+
+def _check_sqlite(url: str) -> None:
+    if url in {"sqlite:///:memory:", "sqlite://"}:
+        return
+    prefix = "sqlite:///"
+    if not url.startswith(prefix):
+        return
+    raw = url[len(prefix) :]
+    if raw == ":memory:":
+        return
+    path = Path(raw)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        conn = sqlite3.connect(str(path))
+        conn.execute("SELECT 1")
+        conn.close()
+    except sqlite3.Error as exc:
+        raise PrerequisiteError(
+            f"SQLite file '{path}' is not usable: {exc}. "
+            "Set SWITCHEROO_DATABASE_URL or SWITCHEROO_DATA_DIR to a writable location."
+        ) from exc

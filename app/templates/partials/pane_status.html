@@ -1,0 +1,57 @@
+{% set p = selected %}
+{% set v = selected_view %}
+<header class="pane-head">
+  <div class="pane-if mono">{{ p.if_name|giface }}</div>
+  <div class="muted">{{ switch.name }}</div>
+  <div class="pane-label">{{ p.friendly_label or "No friendly label" }}</div>
+</header>
+
+<dl class="pane-dl">
+  <div><dt>Purpose</dt><dd>{{ p.purpose|purpose }}</dd></div>
+  <div>
+    <dt>Link</dt>
+    <dd><span class="light {{ p.oper_status }}">{{ p.oper_status }}</span></dd>
+  </div>
+  <div>
+    <dt>Admin</dt>
+    <dd>
+      {% if p.admin_status == 'down' %}
+      <span class="light shut">shutdown</span>
+      {% else %}{{ p.admin_status }}{% endif %}
+    </dd>
+  </div>
+  {% if v.problem %}
+  <div><dt>Problem</dt><dd class="poll-error">{{ v.problem }}</dd></div>
+  {% endif %}
+  <div class="vlan-row">
+    <dt>VLAN</dt>
+    <dd class="vlan-dd">
+      <span class="vlan-current">{% if p.vlan_id is not none %}<span class="mono">{{ p.vlan_id }}</span> {{ p.vlan_name or "" }}{% else %}—{% endif %}</span>
+      {% if v.pending_vlan %}
+      <span class="vlan-sep" aria-hidden="true">|</span>
+      <span class="vlan-pending" title="VLAN change requested, waiting for Networks">
+        <span class="mono">{{ v.pending_vlan.requested_vlan_id }}</span>
+        {{ v.pending_vlan.requested_vlan_name or "" }}
+        <span class="vlan-req">REQ</span>
+        {% if v.pending_vlan.servicenow_ticket %}
+        <span class="vlan-sn mono">{{ v.pending_vlan.servicenow_ticket }}</span>
+        {% endif %}
+      </span>
+      {% endif %}
+    </dd>
+  </div>
+  <div><dt>MAC</dt><dd class="mono">{{ p.mac_address or "—" }}</dd></div>
+  <div><dt>IP</dt><dd class="mono">{{ p.ip_address or "—" }}</dd></div>
+  <div>
+    <dt>ISE</dt>
+    <dd>{% if p.ise_status %}<span class="ise ise-{{ p.ise_status }}">{{ p.ise_status }}</span>{% else %}—{% endif %}</dd>
+  </div>
+  <div><dt>Uptime</dt><dd>{{ p.link_up_since|connected }}</dd></div>
+  <div><dt>Status poll</dt><dd>{{ p.last_status_poll_at|ago }}</dd></div>
+  <div><dt>Detail poll</dt><dd>{{ p.last_detail_poll_at|ago }}</dd></div>
+  <div><dt>Source</dt><dd><span class="source source-{{ p.data_source }}">{{ p.data_source }}</span></dd></div>
+  <div>
+    <dt>Cooldown</dt>
+    <dd>{% if v.can_refresh %}ready{% else %}{{ v.cooldown }}s remaining (shared per port){% endif %}</dd>
+  </div>
+</dl>

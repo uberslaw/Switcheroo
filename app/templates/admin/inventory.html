@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Inventory · Switcheroo{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>Switch inventory</h1>
+    <p class="muted">Add Catalyst 9300s here. Credentials stay on this host. Do not paste production TACACS passwords into a shared lab box.</p>
+  </div>
+  <div class="head-actions">
+    <a class="btn" href="/export.xlsx">Export all XLSX</a>
+    <a class="btn btn-primary" href="/admin/switches/new">Add switch</a>
+  </div>
+</div>
+<table class="ports">
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Mgmt IP</th>
+      <th>Location</th>
+      <th>Driver</th>
+      <th>Creds</th>
+      <th>Last status</th>
+      <th>Last daily</th>
+      <th>Error</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in switches %}
+    <tr>
+      <td><a href="/switches/{{ s.id }}">{{ s.name }}</a></td>
+      <td class="mono">{{ s.management_ip }}</td>
+      <td>{{ s.location }}</td>
+      <td>{{ s.driver_override or settings.driver }}</td>
+      <td>{% if s.username %}set{% else %}none — simulator{% endif %}</td>
+      <td>{{ s.last_status_poll_at|ago }}</td>
+      <td>{{ s.last_daily_poll_at|ago }}</td>
+      <td class="tiny">{% if s.last_poll_error %}<span class="poll-error">{{ s.last_poll_error }}</span>{% else %}—{% endif %}</td>
+      <td class="actions">
+        <a class="btn btn-small" href="/switches/{{ s.id }}">Faceplate</a>
+        <a class="btn btn-small" href="/switches/{{ s.id }}/export.xlsx">XLSX</a>
+        <a class="btn btn-small" href="/admin/switches/{{ s.id }}/edit">Edit</a>
+        <a class="btn btn-small" href="/admin/switches/{{ s.id }}/ports">Ports</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

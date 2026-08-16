@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Approvals · Switcheroo{% endblock %}
+{% block body %}
+<h1>Approval queue</h1>
+<p class="muted">Approve runs the change on the configured driver (simulator by default). Reject requires a note.</p>
+{% if not pending %}
+<p class="empty">No pending requests.</p>
+{% else %}
+<table class="ports">
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>When</th>
+      <th>Who</th>
+      <th>Switch / port</th>
+      <th>Change</th>
+      <th>ServiceNow</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in pending %}
+    <tr>
+      <td>{{ r.id }}</td>
+      <td>{{ r.created_at|dt }}</td>
+      <td>{{ r.requester.username }}</td>
+      <td>
+        {{ r.switch.name }}<br>
+        <span class="mono">{{ r.port.if_name.replace('GigabitEthernet', 'Gi') }}</span>
+        <span class="muted">{{ r.port.friendly_label }}</span>
+      </td>
+      <td>
+        {{ r.request_type }}
+        {% if r.request_type == 'vlan_change' %}
+        → VLAN {{ r.requested_vlan_id }} {{ r.requested_vlan_name or '' }}
+        (now {{ r.port.vlan_id }} {{ r.port.vlan_name or '' }})
+        {% endif %}
+      </td>
+      <td class="tiny">{{ r.servicenow_ticket or '—' }}<br>{{ r.servicenow_note or '' }}</td>
+      <td>
+        <form method="post" action="/admin/approvals/{{ r.id }}/approve" class="stack-tight">
+          <input name="note" placeholder="optional note">
+          <button class="btn btn-small btn-primary" type="submit">Approve &amp; run</button>
+        </form>
+        <form method="post" action="/admin/approvals/{{ r.id }}/reject" class="stack-tight">
+          <input name="note" required placeholder="reject reason (required)">
+          <button class="btn btn-small" type="submit">Reject</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}
