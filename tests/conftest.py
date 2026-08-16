@@ -61,17 +61,17 @@ from app.seed import seed
 
 @pytest.fixture(autouse=True)
 def _clean_db():
+    from app.config import get_settings
+
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     simulator.reset()
-    dry = TMP / "servicenow-dryrun"
-    if dry.exists():
-        for path in dry.glob("*.json"):
-            path.unlink()
-    teams_dry = TMP / "teams-dryrun"
-    if teams_dry.exists():
-        for path in teams_dry.glob("*.json"):
-            path.unlink()
+    data_dir = get_settings().data_dir
+    for folder_name in ("servicenow-dryrun", "teams-dryrun"):
+        folder = data_dir / folder_name
+        if folder.exists():
+            for path in folder.glob("*.json"):
+                path.unlink()
     yield
     simulator.reset()
 
