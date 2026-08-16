@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 import httpx
 
 from app.config import Settings, get_settings
-from app.models import REQUEST_VLAN, STATUS_PENDING, ChangeRequest
+from app.models import REQUEST_VLAN, STATUS_PENDING, ChangeRequest, User
 from app.services.uptime import short_if_name
 
 log = logging.getLogger("switcheroo.teams")
@@ -56,6 +56,11 @@ def request_page_url(request_id: int, settings: Settings | None = None) -> str:
     return f"{public_base_url(settings)}/requests?status=pending#request-{request_id}"
 
 
+def acknowledge_page_url(request_id: int, settings: Settings | None = None) -> str:
+    """One-click 'I'm on it' page opened from the Teams card."""
+    return f"{public_base_url(settings)}/requests/{request_id}/ack"
+
+
 def webhook_host(url: str) -> str:
     return (urlparse(url).hostname or "").lower()
 
@@ -86,8 +91,13 @@ def _vlan_label(vlan_id: int | None, vlan_name: str | None) -> str:
     return f"{vlan_id} {name}".strip()
 
 
-def build_notify_payload(req: ChangeRequest, settings: Settings | None = None) -> dict[str, Any]:
-    settings = settings or get_settings()
+def _actor_label(user: User | None) -> str:
+    if user is None:
+        return "Networks"
+    return (user.display_name or user.username or "").strip() or f"user-{user.id}"
+
+
+def _request_facts(req: ChangeRequest) -> list[tuple[str, str]]:
     port = req.port
     switch = req.switch
     if_name = short_if_name(port.if_name) if port is not None else f"port-{req.port_id}"
@@ -96,10 +106,7 @@ def build_notify_payload(req: ChangeRequest, settings: Settings | None = None) -
     requester = req.requester.username if req.requester is not None else str(req.requester_id)
     frm = _vlan_label(req.from_vlan_id, req.from_vlan_name)
     to = _vlan_label(req.requested_vlan_id, req.requested_vlan_name)
-    page_url = request_page_url(req.id, settings)
-    title = "A VLAN change request has been generated"
-    body = "Open this link to accept or reject."
-    facts = [
+    return [
         ("Request", f"#{req.id}"),
         ("Requester", requester),
         ("Switch", sw_name),
@@ -107,6 +114,22 @@ def build_notify_payload(req: ChangeRequest, settings: Settings | None = None) -
         ("Port", if_name),
         ("VLAN", f"{frm} → {to}"),
     ]
+
+
+def _summary_line(req: ChangeRequest) -> str:
+    facts = dict(_request_facts(req))
+    return f"{facts['Switch']} {facts['Port']}: {facts['VLAN']} (requested by {facts['Requester']})."
+
+
+def _build_card(
+    *,
+    title: str,
+    body: str,
+    facts: list[tuple[str, str]],
+    actions: list[tuple[str, str]],
+    settings: Settings,
+    summary_html: str | None = None,
+) -> dict[str, Any]:
     if settings.teams_webhook_format == "messagecard":
         return {
             "@type": "MessageCard",
@@ -114,7 +137,7 @@ def build_notify_payload(req: ChangeRequest, settings: Settings | None = None) -
             "summary": title,
             "themeColor": "C6D36E",
             "title": title,
-            "text": f"{body}<br/>{sw_name} {if_name}: {frm} → {to} (requested by {requester}).",
+            "text": summary_html or f"{body}",
             "sections": [
                 {
                     "facts": [{"name": name, "value": value} for name, value in facts],
@@ -123,9 +146,10 @@ def build_notify_payload(req: ChangeRequest, settings: Settings | None = None) -
             "potentialAction": [
                 {
                     "@type": "OpenUri",
-                    "name": "Open request page",
-                    "targets": [{"os": "default", "uri": page_url}],
+                    "name": label,
+                    "targets": [{"os": "default", "uri": url}],
                 }
+                for label, url in actions
             ],
         }
     return {
@@ -157,16 +181,68 @@ def build_notify_payload(req: ChangeRequest, settings: Settings | None = None) -
                         },
                     ],
                     "actions": [
-                        {
-                            "type": "Action.OpenUrl",
-                            "title": "Open request page",
-                            "url": page_url,
-                        }
+                        {"type": "Action.OpenUrl", "title": label, "url": url} for label, url in actions
                     ],
                 },
             }
         ],
     }
+
+
+def build_notify_payload(req: ChangeRequest, settings: Settings | None = None) -> dict[str, Any]:
+    settings = settings or get_settings()
+    page_url = request_page_url(req.id, settings)
+    ack_url = acknowledge_page_url(req.id, settings)
+    facts = _request_facts(req)
+    title = "A VLAN change request has been generated"
+    body = "Open this link to accept or reject. Click I'm on it first so nobody doubles up."
+    return _build_card(
+        title=title,
+        body=body,
+        facts=facts,
+        actions=[("I'm on it", ack_url), ("Open request page", page_url)],
+        settings=settings,
+        summary_html=f"{body}<br/>{_summary_line(req)}",
+    )
+
+
+def build_acknowledged_payload(
+    req: ChangeRequest, actor: User, settings: Settings | None = None
+) -> dict[str, Any]:
+    settings = settings or get_settings()
+    who = _actor_label(actor)
+    facts = _request_facts(req) + [("Acknowledged by", who)]
+    title = f"VLAN request #{req.id} acknowledged"
+    body = f"{who} is handling this — no need to pick it up."
+    return _build_card(
+        title=title,
+        body=body,
+        facts=facts,
+        actions=[("Open request page", request_page_url(req.id, settings))],
+        settings=settings,
+        summary_html=body,
+    )
+
+
+def build_released_payload(
+    req: ChangeRequest, actor: User, settings: Settings | None = None
+) -> dict[str, Any]:
+    settings = settings or get_settings()
+    who = _actor_label(actor)
+    facts = _request_facts(req)
+    title = f"VLAN request #{req.id} is available again"
+    body = f"{who} released the acknowledgement. Someone else can pick this up."
+    return _build_card(
+        title=title,
+        body=body,
+        facts=facts,
+        actions=[
+            ("I'm on it", acknowledge_page_url(req.id, settings)),
+            ("Open request page", request_page_url(req.id, settings)),
+        ],
+        settings=settings,
+        summary_html=body,
+    )
 
 
 def dry_run_dir() -> Path:
@@ -204,48 +280,96 @@ class TeamsAdapter:
                 skipped=True,
             )
         payload = build_notify_payload(request)
-        if not self.http_allowed():
-            return self._dry_run_write(request, payload)
-        return self._live_post(request, payload)
+        return self._post_or_dry_run(request, payload, action="notify")
 
-    def _dry_run_write(self, request: ChangeRequest, payload: dict[str, Any]) -> NotifyResult:
+    def notify_acknowledged(self, request: ChangeRequest, actor: User) -> NotifyResult:
+        if request.request_type != REQUEST_VLAN:
+            return NotifyResult(
+                note="Teams alerts are for VLAN changes only.",
+                payload={},
+                live=False,
+                skipped=True,
+            )
+        payload = build_acknowledged_payload(request, actor)
+        return self._post_or_dry_run(request, payload, action="acknowledge")
+
+    def notify_released(self, request: ChangeRequest, actor: User) -> NotifyResult:
+        if request.request_type != REQUEST_VLAN:
+            return NotifyResult(
+                note="Teams alerts are for VLAN changes only.",
+                payload={},
+                live=False,
+                skipped=True,
+            )
+        payload = build_released_payload(request, actor)
+        return self._post_or_dry_run(request, payload, action="release")
+
+    def _post_or_dry_run(
+        self, request: ChangeRequest, payload: dict[str, Any], *, action: str
+    ) -> NotifyResult:
+        if not self.http_allowed():
+            return self._dry_run_write(request, payload, action)
+        return self._live_post(request, payload, action)
+
+    def _dry_run_write(
+        self, request: ChangeRequest, payload: dict[str, Any], action: str
+    ) -> NotifyResult:
         settings = get_settings()
-        record = {
-            "mode": "dry-run",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "webhook_host": webhook_host(settings.teams_webhook_url) or "(unset — no HTTP)",
-            "http": False,
-            "request_id": request.id,
-            "page_url": request_page_url(request.id, settings),
-            "payload": payload,
-        }
         path = dry_run_dir() / _safe_filename(request.id)
+        record: dict[str, Any] = {}
+        if path.exists() and action != "notify":
+            try:
+                record = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                record = {}
+        if action == "notify" or not record:
+            record = {
+                "mode": "dry-run",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "webhook_host": webhook_host(settings.teams_webhook_url) or "(unset — no HTTP)",
+                "http": False,
+                "request_id": request.id,
+                "page_url": request_page_url(request.id, settings),
+                "ack_url": acknowledge_page_url(request.id, settings),
+                "payload": payload,
+            }
+        if action != "notify":
+            record["last_update"] = {
+                "action": action,
+                "at": datetime.now(timezone.utc).isoformat(),
+                "http": False,
+                "payload": payload,
+            }
         path.write_text(json.dumps(record, indent=2), encoding="utf-8")
         log.info(
-            "Teams dry-run notify (no HTTP) request=%s file=%s host=%s",
+            "Teams dry-run %s (no HTTP) request=%s file=%s host=%s",
+            action,
             request.id,
             path,
-            record["webhook_host"],
+            webhook_host(settings.teams_webhook_url) or "(unset)",
         )
         return NotifyResult(
-            note=f"Dry-run: would POST Teams webhook. Payload at {path}. No call to Teams.",
+            note=f"Dry-run: would POST Teams {action}. Payload at {path}. No call to Teams.",
             payload=payload,
             live=False,
         )
 
-    def _live_post(self, request: ChangeRequest, payload: dict[str, Any]) -> NotifyResult:
+    def _live_post(
+        self, request: ChangeRequest, payload: dict[str, Any], action: str
+    ) -> NotifyResult:
         settings = get_settings()
         err = validate_teams_webhook_url(settings.teams_webhook_url)
         if err:
             raise TeamsError(err)
         self._http_json(settings.teams_webhook_url, payload)
         log.info(
-            "Teams webhook posted request=%s host=%s",
+            "Teams webhook posted action=%s request=%s host=%s",
+            action,
             request.id,
             webhook_host(settings.teams_webhook_url),
         )
         return NotifyResult(
-            note=f"Posted Teams alert for request #{request.id}.",
+            note=f"Posted Teams {action} for request #{request.id}.",
             payload=payload,
             live=True,
         )

@@ -5,6 +5,8 @@ import hmac
 import os
 from typing import Optional
 
+from urllib.parse import quote
+
 from fastapi import HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -52,9 +54,15 @@ def user_from_request(db: Session, request: Request) -> Optional[User]:
 def require_user(db: Session, request: Request) -> User:
     user = user_from_request(db, request)
     if user is None:
+        path = request.url.path
+        if request.url.query:
+            path = f"{path}?{request.url.query}"
+        location = "/login"
+        if path and path != "/login":
+            location = f"/login?next={quote(path, safe='')}"
         raise HTTPException(
             status_code=status.HTTP_303_SEE_OTHER,
-            headers={"Location": "/login"},
+            headers={"Location": location},
         )
     return user
 
@@ -63,3 +71,11 @@ def require_networks(user: User) -> User:
     if user.role != ROLE_NETWORKS:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Networks role required")
     return user
+
+
+def safe_next_path(raw: str | None, default: str = "/") -> str:
+    """Allow only same-origin relative paths (login next, approve return)."""
+    text = (raw or "").strip()
+    if not text.startswith("/") or text.startswith("//") or "\\" in text or "://" in text:
+        return default
+    return text

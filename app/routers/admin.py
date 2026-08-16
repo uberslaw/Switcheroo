@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import hash_password, require_networks, require_user
+from app.auth import hash_password, require_networks, require_user, safe_next_path
 from app.db import get_db
 from app.drivers.simulator import simulator
 from app.models import (
@@ -29,10 +29,7 @@ router = APIRouter(prefix="/admin")
 
 def _safe_next(raw: str | None, default: str = "/admin/approvals") -> str:
     """Allow only same-origin relative paths so approve/reject can return to /requests."""
-    text = (raw or "").strip()
-    if not text.startswith("/") or text.startswith("//") or "\\" in text or "://" in text:
-        return default
-    return text
+    return safe_next_path(raw, default)
 
 
 def _admin(request: Request, db: Session = Depends(get_db)) -> User:

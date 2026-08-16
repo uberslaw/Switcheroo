@@ -22,11 +22,28 @@ The Switcheroo host must be able to reach the webhook hostname (typically `*.log
 
 Title: **A VLAN change request has been generated**
 
-Body: **Open this link to accept or reject.**
+Body: **Open this link to accept or reject. Click I'm on it first so nobody doubles up.**
 
-Button: **Open request page** → `{SWITCHEROO_PUBLIC_URL}/requests?status=pending#request-{id}`
+Buttons:
+
+- **I'm on it** → `{SWITCHEROO_PUBLIC_URL}/requests/{id}/ack`
+- **Open request page** → `{SWITCHEROO_PUBLIC_URL}/requests?status=pending#request-{id}`
 
 Facts include request id, requester, switch, office, port, and from → to VLAN. Networks can Approve & run / Reject on that page (same actions as the approval queue).
+
+## Acknowledgement (so nobody doubles up)
+
+Incoming webhooks **cannot rewrite** the original channel card after it is posted (that needs a Teams bot). The pattern that still works inside the channel:
+
+1. First person clicks **I'm on it** on the card (or on `/requests`).
+2. After sign-in they confirm. Switcheroo records who claimed it.
+3. A **follow-up card** posts to the same channel: *VLAN request #N acknowledged — {name} is handling this — no need to pick it up.*
+4. The Requests page and approval queue show **On it: {username}**.
+5. If they cannot finish, **Release** clears the claim and posts that the request is available again.
+
+A second Networks user who tries to acknowledge gets *Already acknowledged by …*. Approve/reject still work if someone has to finish another person's claim.
+
+The ack page is `/requests/{id}/ack`. Unauthenticated clicks from Teams are sent to login and then back to that page.
 
 ## Going live
 
@@ -36,7 +53,7 @@ Facts include request id, requester, switch, office, port, and from → to VLAN.
 4. `TEAMS_DRY_RUN=false`
 5. Leave `TEAMS_WEBHOOK_FORMAT=adaptive` for Workflows. Use `messagecard` only for a classic Incoming Webhook.
 6. Restart Switcheroo. Startup **fails fast** if live mode is on and the webhook URL or public URL is missing, or if the webhook host is not a Teams/Power Automate endpoint.
-7. Create one lab VLAN request (with auto-approve off) and confirm the channel card appears; open the link and approve or reject.
+7. Create one lab VLAN request (with auto-approve off) and confirm the channel card appears; click **I'm on it**, then confirm a follow-up "acknowledged" card; approve or reject.
 
 Dry-run payloads (no HTTP) land in `data/teams-dryrun/` and `data/switcheroo.log`. The webhook URL is never written to those files — only the hostname.
 

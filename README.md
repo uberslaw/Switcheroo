@@ -130,7 +130,12 @@ A Teams webhook is the pager so Networks do not have to keep the console open. *
 | Dry-run (default) | `TEAMS_ENABLED=false` and/or `TEAMS_DRY_RUN=true` | Local request + payload written to `data/teams-dryrun/`. **No HTTP** to Microsoft. |
 | Live | `TEAMS_ENABLED=true`, `TEAMS_DRY_RUN=false`, `TEAMS_WEBHOOK_URL` + `SWITCHEROO_PUBLIC_URL` set | `POST` Adaptive Card (Workflows) or MessageCard (classic Incoming Webhook) to the channel. |
 
-The card says a VLAN change request has been generated, includes switch/port/VLAN facts, and links to `{SWITCHEROO_PUBLIC_URL}/requests?status=pending#request-{id}` to accept or reject.
+The card says a VLAN change request has been generated, includes switch/port/VLAN facts, and has two links:
+
+- **I'm on it** → `{SWITCHEROO_PUBLIC_URL}/requests/{id}/ack` (claim the work so nobody doubles up)
+- **Open request page** → `{SWITCHEROO_PUBLIC_URL}/requests?status=pending#request-{id}` (accept or reject)
+
+Incoming webhooks cannot edit the original card in place. When someone acknowledges, Switcheroo posts a **follow-up** card: *VLAN request #N acknowledged — {name} is handling this — no need to pick it up.* Release posts that the request is available again.
 
 If live mode is on and the webhook or public URL is missing (or the webhook host is not Teams/Power Automate), startup **fails fast**. A Teams POST failure is logged and **does not** drop the local request.
 

@@ -49,7 +49,10 @@ def test_dry_run_create_records_payload_for_pending_vlan(seeded_db, monkeypatch)
     card = payload["attachments"][0]["content"]
     assert card["body"][0]["text"] == "A VLAN change request has been generated"
     assert "accept or reject" in card["body"][1]["text"].lower()
-    assert card["actions"][0]["url"] == data["page_url"]
+    assert card["actions"][0]["title"] == "I'm on it"
+    assert card["actions"][0]["url"] == data["ack_url"]
+    assert data["ack_url"] == f"http://switcheroo.test/requests/{req.id}/ack"
+    assert card["actions"][1]["url"] == data["page_url"]
     blob = json.dumps(data)
     assert "not-a-real-secret" not in blob
     assert "sig=" not in blob.lower()
@@ -150,7 +153,10 @@ def test_payload_uses_public_url_and_request_anchor(seeded_db):
     url = request_page_url(req.id)
     assert url.startswith("http://switcheroo.test/requests?status=pending#request-")
     payload = build_notify_payload(req)
-    assert payload["attachments"][0]["content"]["actions"][0]["url"] == url
+    actions = payload["attachments"][0]["content"]["actions"]
+    assert actions[0]["title"] == "I'm on it"
+    assert actions[0]["url"] == f"http://switcheroo.test/requests/{req.id}/ack"
+    assert actions[1]["url"] == url
 
 
 def test_messagecard_format(seeded_db, monkeypatch):
@@ -162,7 +168,9 @@ def test_messagecard_format(seeded_db, monkeypatch):
     payload = build_notify_payload(req)
     assert payload["@type"] == "MessageCard"
     assert payload["title"] == "A VLAN change request has been generated"
-    assert payload["potentialAction"][0]["targets"][0]["uri"] == request_page_url(req.id)
+    assert payload["potentialAction"][0]["name"] == "I'm on it"
+    assert payload["potentialAction"][0]["targets"][0]["uri"].endswith(f"/requests/{req.id}/ack")
+    assert payload["potentialAction"][1]["targets"][0]["uri"] == request_page_url(req.id)
 
 
 class _FakeResponse:
@@ -205,6 +213,7 @@ def test_live_create_posts_webhook_when_mocked(seeded_db, monkeypatch):
     assert url == WORKFLOW_WEBHOOK
     assert body["type"] == "message"
     assert "https://switcheroo.internal/requests?status=pending#request-" in json.dumps(body)
+    assert f"https://switcheroo.internal/requests/{req.id}/ack" in json.dumps(body)
     assert "password" not in json.dumps(body).lower()
 
 

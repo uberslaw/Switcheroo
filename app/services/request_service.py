@@ -159,12 +159,52 @@ def reject_request(db: Session, req: ChangeRequest, reviewer: User, note: str) -
     return req
 
 
+def acknowledge_request(db: Session, req: ChangeRequest, user: User) -> ChangeRequest:
+    """Claim a pending request so the rest of Networks does not double up."""
+    if req.status != STATUS_PENDING:
+        raise RequestError(f"Request {req.id} is {req.status}, not pending")
+    if req.acknowledged_by_id is not None:
+        if req.acknowledged_by_id == user.id:
+            return req
+        who = req.acknowledged_by.username if req.acknowledged_by is not None else str(req.acknowledged_by_id)
+        raise RequestError(f"Already acknowledged by {who}")
+    req.acknowledged_by_id = user.id
+    req.acknowledged_at = utcnow()
+    _teams_notify_acknowledged(req, user)
+    return req
+
+
+def release_acknowledgement(db: Session, req: ChangeRequest, user: User) -> ChangeRequest:
+    if req.status != STATUS_PENDING:
+        raise RequestError(f"Request {req.id} is {req.status}, not pending")
+    if req.acknowledged_by_id is None:
+        return req
+    req.acknowledged_by_id = None
+    req.acknowledged_at = None
+    _teams_notify_released(req, user)
+    return req
+
+
 def _teams_notify_pending(req: ChangeRequest) -> None:
     """Best-effort: a Teams outage must not block the local VLAN request."""
     try:
         teams.notify_vlan_pending(req)
     except TeamsError as exc:
         log.warning("Teams notify failed for request %s: %s", req.id, exc)
+
+
+def _teams_notify_acknowledged(req: ChangeRequest, actor: User) -> None:
+    try:
+        teams.notify_acknowledged(req, actor)
+    except TeamsError as exc:
+        log.warning("Teams acknowledge notify failed for request %s: %s", req.id, exc)
+
+
+def _teams_notify_released(req: ChangeRequest, actor: User) -> None:
+    try:
+        teams.notify_released(req, actor)
+    except TeamsError as exc:
+        log.warning("Teams release notify failed for request %s: %s", req.id, exc)
 
 
 def _sn_after_decision(req: ChangeRequest, approved: bool) -> None:

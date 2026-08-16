@@ -154,12 +154,15 @@ class ChangeRequest(Base):
     servicenow_correlation_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     auto_approved: Mapped[bool] = mapped_column(default=False)
     auto_approve_reason: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    acknowledged_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     executed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     requester: Mapped[User] = relationship(foreign_keys=[requester_id], back_populates="requests")
     reviewer: Mapped[Optional[User]] = relationship(foreign_keys=[reviewer_id])
+    acknowledged_by: Mapped[Optional[User]] = relationship(foreign_keys=[acknowledged_by_id])
     switch: Mapped[Switch] = relationship()
     port: Mapped[Port] = relationship()
 

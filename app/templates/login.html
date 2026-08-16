@@ -20,6 +20,9 @@
     <div class="flash flash-{{ item.category }}">{{ item.message }}</div>
     {% endfor %}
     <form method="post" action="/login" class="stack">
+      {% if next_path %}
+      <input type="hidden" name="next" value="{{ next_path }}">
+      {% endif %}
       <label>Username
         <input type="text" name="username" autocomplete="username" required autofocus>
       </label>

@@ -106,6 +106,9 @@
         {% else %}
         <span class="source source-{{ r.status }}">{{ r.status }}</span>
         {% endif %}
+        {% if r.status == 'pending' and r.acknowledged_by %}
+        <div><span class="source source-claimed">On it: {{ r.acknowledged_by.username }}</span></div>
+        {% endif %}
       </td>
       <td>
         {% if r.auto_approved %}Policy
@@ -117,6 +120,15 @@
       {% if user.role == 'networks' %}
       <td>
         {% if r.status == 'pending' %}
+        {% if not r.acknowledged_by %}
+        <form method="post" action="/requests/{{ r.id }}/ack" class="stack-tight">
+          <button class="btn btn-small" type="submit">I'm on it</button>
+        </form>
+        {% elif r.acknowledged_by_id == user.id %}
+        <form method="post" action="/requests/{{ r.id }}/ack/release" class="stack-tight">
+          <button class="btn btn-small" type="submit">Release</button>
+        </form>
+        {% endif %}
         <form method="post" action="/admin/approvals/{{ r.id }}/approve" class="stack-tight">
           <input type="hidden" name="next" value="/requests?status=pending">
           <input name="note" placeholder="optional note">

@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth import authenticate, require_user, user_from_request
+from app.auth import authenticate, require_networks, require_user, safe_next_path, user_from_request
 from app.config import get_settings
 from app.db import get_db
 from app.models import (
@@ -31,7 +31,12 @@ from app.services.switch_service import (
     stop_troubleshooting,
     visible_switches,
 )
-from app.services.request_service import pending_vlan_request
+from app.services.request_service import (
+    RequestError,
+    acknowledge_request,
+    pending_vlan_request,
+    release_acknowledgement,
+)
 from app.services.uptime import faceplate_groups, port_led, problem_reason
 from app.templating import flash, render
 
@@ -88,10 +93,11 @@ def _workspace_context(db: Session, user: User, switch: Switch, selected_id: int
 
 
 @router.get("/login")
-def login_page(request: Request, db: Session = Depends(get_db)):
+def login_page(request: Request, db: Session = Depends(get_db), next: str = ""):
+    dest = safe_next_path(next, "/")
     if user_from_request(db, request):
-        return RedirectResponse("/", status_code=303)
-    return render(request, "login.html", user=None)
+        return RedirectResponse(dest, status_code=303)
+    return render(request, "login.html", user=None, next_path="" if dest == "/" else dest)
 
 
 @router.post("/login")
@@ -99,14 +105,16 @@ def login_submit(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
+    next: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    dest = safe_next_path(next, "/")
     user = authenticate(db, username.strip(), password)
     if user is None:
         flash(request, "Unknown user or bad password.", "error")
-        return render(request, "login.html", user=None, status_code=401)
+        return render(request, "login.html", user=None, next_path="" if dest == "/" else dest, status_code=401)
     request.session["user_id"] = user.id
-    return RedirectResponse("/", status_code=303)
+    return RedirectResponse(dest, status_code=303)
 
 
 @router.post("/logout")
@@ -354,6 +362,68 @@ def review_requests(
         offices=offices if user.role != ROLE_NETWORKS else sorted({s.location for s in all_switches if s.location}),
         filters={"status": status, "switch_id": switch_id or "", "office": office, "date_from": date_from, "date_to": date_to},
     )
+
+
+@router.get("/requests/{request_id}/ack")
+def acknowledge_page(
+    request_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_current_user),
+):
+    req = db.get(ChangeRequest, request_id)
+    if req is None:
+        flash(request, "Request not found.", "error")
+        return RedirectResponse("/requests", status_code=303)
+    return render(request, "ack.html", user=user, req=req)
+
+
+@router.post("/requests/{request_id}/ack")
+def acknowledge_submit(
+    request_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_current_user),
+):
+    require_networks(user)
+    req = db.get(ChangeRequest, request_id)
+    if req is None:
+        flash(request, "Request not found.", "error")
+        return RedirectResponse("/requests", status_code=303)
+    try:
+        acknowledge_request(db, req, user)
+        db.commit()
+        flash(
+            request,
+            f"You acknowledged request #{req.id}. The Teams channel has been told you are on it.",
+            "ok",
+        )
+    except RequestError as exc:
+        db.rollback()
+        flash(request, str(exc), "error")
+    return RedirectResponse(f"/requests/{request_id}/ack", status_code=303)
+
+
+@router.post("/requests/{request_id}/ack/release")
+def acknowledge_release(
+    request_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_current_user),
+):
+    require_networks(user)
+    req = db.get(ChangeRequest, request_id)
+    if req is None:
+        flash(request, "Request not found.", "error")
+        return RedirectResponse("/requests", status_code=303)
+    try:
+        release_acknowledgement(db, req, user)
+        db.commit()
+        flash(request, f"Released request #{request_id}. Someone else can pick it up.", "ok")
+    except RequestError as exc:
+        db.rollback()
+        flash(request, str(exc), "error")
+    return RedirectResponse(f"/requests/{request_id}/ack", status_code=303)
 
 
 @router.get("/export.xlsx")

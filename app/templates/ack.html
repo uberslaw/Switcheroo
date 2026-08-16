@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}I'm on it · Request #{{ req.id }} · Switcheroo{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>Request #{{ req.id }}</h1>
+    <p class="muted">Acknowledge so the rest of Networks does not double up. Approve and reject still happen here or on the Requests page.</p>
+  </div>
+  <a class="btn" href="/requests?status=pending#request-{{ req.id }}">Back to requests</a>
+</div>
+
+<section class="ack-card">
+  <p>
+    {% if req.request_type == 'vlan_change' %}VLAN
+    {% elif req.request_type == 'bounce' %}Bounce
+    {% elif req.request_type == 'no_shutdown' %}No-shutdown
+    {% else %}{{ req.request_type }}{% endif %}
+    on <span class="mono">{{ req.switch.name }} {{ req.port.if_name|giface }}</span>
+    {% if req.request_type == 'vlan_change' %}
+    — {{ req.from_vlan_id or "—" }} {{ req.from_vlan_name or "" }}
+    → {{ req.requested_vlan_id or "—" }} {{ req.requested_vlan_name or "" }}
+    {% endif %}
+  </p>
+  <p class="muted">Requested by {{ req.requester.username }} {{ req.created_at|dt }}</p>
+
+  {% if req.status != 'pending' %}
+  <p>
+    <span class="source source-{{ req.status }}">{{ req.status }}</span>
+    This request is no longer on the queue.
+  </p>
+  {% elif req.acknowledged_by %}
+    {% if req.acknowledged_by_id == user.id %}
+    <p>
+      <span class="source source-claimed">You're on it</span>
+      Acknowledged {{ req.acknowledged_at|dt }}. The Teams channel was told you are handling this.
+    </p>
+    {% else %}
+    <p>
+      <span class="source source-claimed">On it: {{ req.acknowledged_by.username }}</span>
+      Acknowledged {{ req.acknowledged_at|dt }}. They are handling this — no need to pick it up unless they release it.
+    </p>
+    {% endif %}
+    {% if user.role == 'networks' %}
+    <form method="post" action="/requests/{{ req.id }}/ack/release" class="stack-tight">
+      <button class="btn" type="submit">Release</button>
+    </form>
+    {% endif %}
+  {% else %}
+    {% if user.role == 'networks' %}
+    <form method="post" action="/requests/{{ req.id }}/ack" class="stack-tight">
+      <button class="btn btn-primary" type="submit">I'm on it</button>
+    </form>
+    <p class="muted">This posts to the Networks Teams channel so nobody else takes the same request.</p>
+    {% else %}
+    <p class="muted">Waiting for Networks to acknowledge.</p>
+    {% endif %}
+  {% endif %}
+
+  {% if req.status == 'pending' and user.role == 'networks' %}
+  <div class="ack-decide">
+    <form method="post" action="/admin/approvals/{{ req.id }}/approve" class="stack-tight">
+      <input type="hidden" name="next" value="/requests/{{ req.id }}/ack">
+      <input name="note" placeholder="optional note">
+      <button class="btn btn-small btn-primary" type="submit">Approve &amp; run</button>
+    </form>
+    <form method="post" action="/admin/approvals/{{ req.id }}/reject" class="stack-tight">
+      <input type="hidden" name="next" value="/requests/{{ req.id }}/ack">
+      <input name="note" required placeholder="reject reason (required)">
+      <button class="btn btn-small" type="submit">Reject</button>
+    </form>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -213,7 +213,22 @@ table.ports tr.request-row:target {
 .source-executed { border-color: var(--up); color: var(--up); }
 .source-auto { border-color: var(--accent); color: var(--accent); }
 .source-pending { border-color: var(--warn); color: var(--warn); }
+.source-claimed { border-color: var(--accent); color: var(--accent); }
 .source-rejected, .source-failed { border-color: var(--down); color: var(--down); }
+
+.ack-card {
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  padding: 1.1rem 1.2rem;
+  max-width: 640px;
+}
+.ack-decide {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
 
 .actions { display: flex; flex-wrap: wrap; gap: 0.3rem; min-width: 220px; }
 .inline-vlan { display: flex; gap: 0.25rem; align-items: center; flex-wrap: wrap; }

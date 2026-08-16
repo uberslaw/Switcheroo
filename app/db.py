@@ -63,6 +63,8 @@ def _migrate_sqlite() -> None:
             "servicenow_correlation_id": "VARCHAR(128)",
             "auto_approved": "INTEGER DEFAULT 0",
             "auto_approve_reason": "VARCHAR(256)",
+            "acknowledged_by_id": "INTEGER",
+            "acknowledged_at": "DATETIME",
         }
         if req_names:
             for col, typ in alters.items():

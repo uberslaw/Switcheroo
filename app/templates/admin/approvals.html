@@ -38,6 +38,13 @@
       </td>
       <td class="tiny">{{ r.servicenow_ticket or '—' }}<br>{{ r.servicenow_note or '' }}</td>
       <td>
+        {% if r.acknowledged_by %}
+        <div class="muted">On it: {{ r.acknowledged_by.username }}</div>
+        {% else %}
+        <form method="post" action="/requests/{{ r.id }}/ack" class="stack-tight">
+          <button class="btn btn-small" type="submit">I'm on it</button>
+        </form>
+        {% endif %}
         <form method="post" action="/admin/approvals/{{ r.id }}/approve" class="stack-tight">
           <input name="note" placeholder="optional note">
           <button class="btn btn-small btn-primary" type="submit">Approve &amp; run</button>
