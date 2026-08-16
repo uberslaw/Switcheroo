@@ -55,7 +55,7 @@ def test_cs_limited_only_sees_permitted_switch(client, seeded_db):
 def test_networks_can_approve_from_requests_page(client, seeded_db):
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     client.post("/login", data={"username": "networks", "password": "networks"}, follow_redirects=False)
     page = client.get("/requests?status=pending")
@@ -79,7 +79,7 @@ def test_networks_can_approve_from_requests_page(client, seeded_db):
 def test_networks_reject_from_requests_ignores_external_next(client, seeded_db):
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     client.post("/login", data={"username": "networks", "password": "networks"}, follow_redirects=False)
     response = client.post(

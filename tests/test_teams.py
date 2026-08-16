@@ -35,7 +35,7 @@ def test_dry_run_create_records_payload_for_pending_vlan(seeded_db, monkeypatch)
     monkeypatch.setattr("app.drivers.teams.teams._http", BoomHttp())
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     folder = Path(get_settings().data_dir) / "teams-dryrun"
     path = folder / _safe_filename(req.id)
@@ -72,7 +72,7 @@ def test_auto_approve_skips_teams_alert(seeded_db):
     seeded_db.flush()
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     assert req.auto_approved is True
     folder = Path(get_settings().data_dir) / "teams-dryrun"
@@ -87,7 +87,7 @@ def test_no_http_when_dry_run_even_if_enabled(seeded_db, monkeypatch):
     assert adapter.http_allowed() is False
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     result = adapter.notify_vlan_pending(req)
     assert result.live is False
@@ -148,7 +148,7 @@ def test_validate_allows_known_hosts():
 def test_payload_uses_public_url_and_request_anchor(seeded_db):
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.flush()
     url = request_page_url(req.id)
     assert url.startswith("http://switcheroo.test/requests?status=pending#request-")
@@ -163,7 +163,7 @@ def test_messagecard_format(seeded_db, monkeypatch):
     monkeypatch.setenv("TEAMS_WEBHOOK_FORMAT", "messagecard")
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.flush()
     payload = build_notify_payload(req)
     assert payload["@type"] == "MessageCard"
@@ -205,7 +205,7 @@ def test_live_create_posts_webhook_when_mocked(seeded_db, monkeypatch):
     monkeypatch.setattr("app.drivers.teams.teams._http", fake)
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     assert fake.calls
     method, url, body = fake.calls[0]
@@ -226,7 +226,7 @@ def test_live_http_failure_does_not_drop_request(seeded_db, monkeypatch):
     monkeypatch.setattr("app.drivers.teams.teams._http", fake)
     port = first_port(seeded_db)
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
-    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50)
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
     seeded_db.commit()
     assert req.id is not None
     assert req.status == "pending"
