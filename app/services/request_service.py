@@ -6,6 +6,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.diagnostics import step
 from app.drivers.factory import get_driver
 from app.drivers.servicenow import ServiceNowError, servicenow
 from app.models import (
@@ -102,26 +103,33 @@ def execute_request(db: Session, req: ChangeRequest) -> None:
     switch = port.switch
     driver = get_driver(switch)
     try:
-        if req.request_type == REQUEST_VLAN:
-            if req.requested_vlan_id is None:
-                raise RequestError("Missing VLAN id")
-            driver.set_access_vlan(switch, port.if_name, req.requested_vlan_id, req.requested_vlan_name or "")
-            port.vlan_id = req.requested_vlan_id
-            port.vlan_name = req.requested_vlan_name
-            port.data_source = SOURCE_WRITE
-        elif req.request_type == REQUEST_BOUNCE:
-            driver.bounce_port(switch, port.if_name)
-            details = driver.poll_interface_details(switch, port.if_name)
-            apply_details(port, details, SOURCE_WRITE)
-        elif req.request_type == REQUEST_NO_SHUTDOWN:
-            driver.no_shutdown(switch, port.if_name)
-            details = driver.poll_interface_details(switch, port.if_name)
-            apply_details(port, details, SOURCE_WRITE)
-        else:
-            raise RequestError(f"Unsupported type {req.request_type}")
-        req.status = STATUS_EXECUTED
-        req.executed_at = utcnow()
-        req.error_message = None
+        with step(
+            "request.execute",
+            request_id=req.id,
+            request_type=req.request_type,
+            switch=switch.name,
+            **{"if": port.if_name},
+        ):
+            if req.request_type == REQUEST_VLAN:
+                if req.requested_vlan_id is None:
+                    raise RequestError("Missing VLAN id")
+                driver.set_access_vlan(switch, port.if_name, req.requested_vlan_id, req.requested_vlan_name or "")
+                port.vlan_id = req.requested_vlan_id
+                port.vlan_name = req.requested_vlan_name
+                port.data_source = SOURCE_WRITE
+            elif req.request_type == REQUEST_BOUNCE:
+                driver.bounce_port(switch, port.if_name)
+                details = driver.poll_interface_details(switch, port.if_name)
+                apply_details(port, details, SOURCE_WRITE)
+            elif req.request_type == REQUEST_NO_SHUTDOWN:
+                driver.no_shutdown(switch, port.if_name)
+                details = driver.poll_interface_details(switch, port.if_name)
+                apply_details(port, details, SOURCE_WRITE)
+            else:
+                raise RequestError(f"Unsupported type {req.request_type}")
+            req.status = STATUS_EXECUTED
+            req.executed_at = utcnow()
+            req.error_message = None
     except Exception as exc:  # noqa: BLE001
         log.exception("Failed to execute request %s", req.id)
         req.status = STATUS_FAILED

@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.diagnostics import step
 from app.drivers.base import DriverError
 from app.drivers.factory import get_driver
 from app.models import (
@@ -108,15 +109,16 @@ def poll_switch_status(db: Session, switch: Switch) -> None:
         return
     driver = get_driver(switch)
     try:
-        statuses = driver.poll_interface_status(switch, [p.if_name for p in ports])
-        by_name = {s.if_name: s for s in statuses}
-        for port in ports:
-            status = by_name.get(port.if_name)
-            if status is None:
-                continue
-            apply_status(port, status.oper_status, status.admin_status)
-        switch.last_status_poll_at = utcnow()
-        switch.last_poll_error = None
+        with step("poll.status", switch=switch.name):
+            statuses = driver.poll_interface_status(switch, [p.if_name for p in ports])
+            by_name = {s.if_name: s for s in statuses}
+            for port in ports:
+                status = by_name.get(port.if_name)
+                if status is None:
+                    continue
+                apply_status(port, status.oper_status, status.admin_status)
+            switch.last_status_poll_at = utcnow()
+            switch.last_poll_error = None
     except Exception as exc:  # noqa: BLE001 — poller must not kill the web app
         log.exception("Status poll failed for %s", switch.name)
         switch.last_poll_error = str(exc)
@@ -129,16 +131,17 @@ def poll_switch_daily(db: Session, switch: Switch) -> None:
     ports = list(db.scalars(select(Port).where(Port.switch_id == switch.id).order_by(Port.if_index)).all())
     driver = get_driver(switch)
     errors: list[str] = []
-    for port in ports:
-        try:
-            details = driver.poll_interface_details(switch, port.if_name)
-            apply_details(port, details, SOURCE_DAILY)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Daily detail poll failed for %s %s: %s", switch.name, port.if_name, exc)
-            port.last_poll_error = str(exc)
-            errors.append(f"{port.if_name}: {exc}")
-    switch.last_daily_poll_at = utcnow()
-    switch.last_poll_error = "; ".join(errors) if errors else None
+    with step("poll.daily", switch=switch.name):
+        for port in ports:
+            try:
+                details = driver.poll_interface_details(switch, port.if_name)
+                apply_details(port, details, SOURCE_DAILY)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Daily detail poll failed for %s %s: %s", switch.name, port.if_name, exc)
+                port.last_poll_error = str(exc)
+                errors.append(f"{port.if_name}: {exc}")
+        switch.last_daily_poll_at = utcnow()
+        switch.last_poll_error = "; ".join(errors) if errors else None
 
 
 def refresh_port(db: Session, port: Port, source: str = SOURCE_LIVE, honor_cooldown: bool = True) -> Port:

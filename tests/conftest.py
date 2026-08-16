@@ -51,6 +51,9 @@ VLAN_REASON = "Need guest VLAN for visitor laptop"
 
 @pytest.fixture(autouse=True)
 def _clean_db():
+    from app.config import get_settings
+    from app.diagnostics import sync_log_level
+
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     simulator.reset()
@@ -58,6 +61,10 @@ def _clean_db():
     if dry.exists():
         for path in dry.glob("*.json"):
             path.unlink()
+    flag = get_settings().data_dir / "diagnostics.enabled"
+    if flag.exists():
+        flag.unlink()
+    sync_log_level()
     yield
     simulator.reset()
 

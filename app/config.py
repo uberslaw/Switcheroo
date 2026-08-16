@@ -71,6 +71,8 @@ class Settings:
     cisco_snmp_community: str
     cisco_snmp_port: int
     cisco_connect_timeout: int
+    log_level: str
+    diagnostics: bool
 
     @property
     def servicenow_live(self) -> bool:
@@ -154,4 +156,6 @@ def get_settings() -> Settings:
         cisco_snmp_community=os.getenv("CISCO_SNMP_COMMUNITY") or "",
         cisco_snmp_port=_as_int(os.getenv("CISCO_SNMP_PORT"), 161),
         cisco_connect_timeout=_as_int(os.getenv("CISCO_CONNECT_TIMEOUT"), 10),
+        log_level=(os.getenv("SWITCHEROO_LOG_LEVEL") or "INFO").strip().upper() or "INFO",
+        diagnostics=_as_bool(os.getenv("SWITCHEROO_DIAGNOSTICS"), False),
     )
