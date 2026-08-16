@@ -29,6 +29,10 @@
       <option value="cisco_iosxe" {% if switch and switch.driver_override == 'cisco_iosxe' %}selected{% endif %}>cisco_iosxe</option>
     </select>
   </label>
+  <label class="check-label">
+    <input type="checkbox" name="monitoring_enabled" value="1" {% if not switch or switch.monitoring_enabled %}checked{% endif %}>
+    Monitor this switch (60s status poll + daily VLAN/MAC/IP/ISE). Uncheck to pause polling without deleting — use this for lab simulators before live testing.
+  </label>
   <div class="form-actions">
     <button class="btn btn-primary" type="submit">Save</button>
     <a class="btn" href="/admin/inventory">Cancel</a>

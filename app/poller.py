@@ -4,13 +4,12 @@ import logging
 from datetime import timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import SessionLocal
-from app.models import Switch, utcnow
+from app.models import utcnow
 from app.services.request_service import sync_servicenow_tickets
-from app.services.switch_service import poll_switch_daily, poll_switch_status, tick_troubleshooting
+from app.services.switch_service import monitored_switches, poll_switch_daily, poll_switch_status, tick_troubleshooting
 
 log = logging.getLogger("switcheroo.poller")
 
@@ -20,7 +19,7 @@ _scheduler: BackgroundScheduler | None = None
 def poll_all_status() -> None:
     db = SessionLocal()
     try:
-        switches = list(db.scalars(select(Switch)).all())
+        switches = monitored_switches(db)
         for switch in switches:
             try:
                 poll_switch_status(db, switch)
@@ -42,7 +41,7 @@ def poll_all_status() -> None:
 def poll_all_daily() -> None:
     db = SessionLocal()
     try:
-        switches = list(db.scalars(select(Switch)).all())
+        switches = monitored_switches(db)
         for switch in switches:
             try:
                 poll_switch_daily(db, switch)

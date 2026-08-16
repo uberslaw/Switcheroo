@@ -4,7 +4,7 @@
 <div class="page-head">
   <div>
     <h1>Switch inventory</h1>
-    <p class="muted">Add Catalyst 9300s here. Credentials stay on this host. Do not paste production TACACS passwords into a shared lab box.</p>
+    <p class="muted">Add Catalyst 9300s here. Pause monitoring to stop polling a box (lab simulators before live testing). Delete removes it from Switcheroo only — the real switch is untouched.</p>
   </div>
   <div class="head-actions">
     <a class="btn" href="/export.xlsx">Export all XLSX</a>
@@ -21,13 +21,14 @@
       <th>Creds</th>
       <th>Last status</th>
       <th>Last daily</th>
+      <th>Monitoring</th>
       <th>Error</th>
       <th></th>
     </tr>
   </thead>
   <tbody>
     {% for s in switches %}
-    <tr>
+    <tr class="{% if not s.monitoring_enabled %}is-shut{% endif %}">
       <td><a href="/switches/{{ s.id }}">{{ s.name }}</a></td>
       <td class="mono">{{ s.management_ip }}</td>
       <td>{{ s.location }}</td>
@@ -35,12 +36,31 @@
       <td>{% if s.username %}set{% else %}none — simulator{% endif %}</td>
       <td>{{ s.last_status_poll_at|ago }}</td>
       <td>{{ s.last_daily_poll_at|ago }}</td>
+      <td>
+        {% if s.monitoring_enabled %}
+        <span class="source source-live">on</span>
+        {% else %}
+        <span class="source source-rejected">paused</span>
+        {% endif %}
+      </td>
       <td class="tiny">{% if s.last_poll_error %}<span class="poll-error">{{ s.last_poll_error }}</span>{% else %}—{% endif %}</td>
       <td class="actions">
         <a class="btn btn-small" href="/switches/{{ s.id }}">Faceplate</a>
         <a class="btn btn-small" href="/switches/{{ s.id }}/export.xlsx">XLSX</a>
         <a class="btn btn-small" href="/admin/switches/{{ s.id }}/edit">Edit</a>
         <a class="btn btn-small" href="/admin/switches/{{ s.id }}/ports">Ports</a>
+        {% if s.monitoring_enabled %}
+        <form method="post" action="/admin/switches/{{ s.id }}/monitoring">
+          <input type="hidden" name="enabled" value="0">
+          <button class="btn btn-small" type="submit">Pause monitoring</button>
+        </form>
+        {% else %}
+        <form method="post" action="/admin/switches/{{ s.id }}/monitoring">
+          <input type="hidden" name="enabled" value="1">
+          <button class="btn btn-small btn-primary" type="submit">Resume monitoring</button>
+        </form>
+        {% endif %}
+        <a class="btn btn-small btn-danger" href="/admin/switches/{{ s.id }}/delete">Delete</a>
       </td>
     </tr>
     {% endfor %}

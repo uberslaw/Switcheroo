@@ -38,6 +38,9 @@ class SimulatorDriver:
     name = "simulator"
     _inventory: dict[str, SimSwitch] = {}
 
+    def drop_switch(self, name: str) -> None:
+        self._inventory.pop(name, None)
+
     def reset(self) -> None:
         self._inventory.clear()
 

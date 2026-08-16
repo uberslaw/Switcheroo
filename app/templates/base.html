@@ -29,15 +29,9 @@
       <a href="/admin/history" class="{% if '/admin/history' in request.url.path %}active{% endif %}">History</a>
       <a href="/admin/permissions" class="{% if '/admin/permissions' in request.url.path %}active{% endif %}">Access</a>
       {% endif %}
-      <details class="nav-menu" {% if request.url.path.startswith('/help') %}open{% endif %}>
-        <summary class="{% if request.url.path.startswith('/help') %}active{% endif %}">Help</summary>
-        <div class="nav-menu-panel">
-          <a href="/help" class="{% if request.url.path == '/help' %}active{% endif %}">Using Switcheroo</a>
-          <a href="/help/security" class="{% if request.url.path == '/help/security' %}active{% endif %}">Security checklist</a>
-        </div>
-      </details>
     </nav>
     <div class="who">
+      <a href="/help" class="nav-help{% if request.url.path.startswith('/help') %} active{% endif %}">Help</a>
       <span class="who-name">{{ user.display_name or user.username }}</span>
       <span class="role-pill">{{ user.role }}</span>
       <form method="post" action="/logout"><button class="btn btn-ghost" type="submit">Sign out</button></form>
@@ -69,7 +63,7 @@
   <footer class="foot">
     <span>Internal use. Writes require Networks approval.</span>
     {% if user %}
-    <span><a href="/help/security">Security checklist</a></span>
+    <span><a href="/help">Help</a> · <a href="/help/security">Security checklist</a></span>
     {% endif %}
     <span>Logs: data/switcheroo.log</span>
     <span>Driver: {{ settings.driver }}</span>

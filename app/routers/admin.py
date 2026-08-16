@@ -24,6 +24,7 @@ from app.models import (
 )
 from app.services.auto_approve import global_key, is_enabled, office_key, requestor_key, set_policy
 from app.services.request_service import RequestError, approve_request, reject_request
+from app.services.switch_service import delete_switch, set_monitoring
 from app.templating import flash, render
 
 router = APIRouter(prefix="/admin")
@@ -76,6 +77,7 @@ def switch_create(
         username=username.strip() or None,
         password=store_secret(password) if password else None,
         driver_override=override,
+        monitoring_enabled=True,
     )
     db.add(switch)
     db.commit()
@@ -103,6 +105,7 @@ def switch_update(
     username: str = Form(""),
     password: str = Form(""),
     driver_override: str = Form(""),
+    monitoring_enabled: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(_admin),
 ):
@@ -119,8 +122,81 @@ def switch_update(
     if password:
         switch.password = store_secret(password)
     switch.driver_override = driver_override.strip() or None
+    set_monitoring(switch, monitoring_enabled == "1")
     db.commit()
     flash(request, "Switch updated.", "ok")
+    return RedirectResponse("/admin/inventory", status_code=303)
+
+
+@router.post("/switches/{switch_id}/monitoring")
+def switch_monitoring(
+    switch_id: int,
+    request: Request,
+    enabled: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    switch = db.get(Switch, switch_id)
+    if switch is None:
+        flash(request, "Switch not found.", "error")
+        return RedirectResponse("/admin/inventory", status_code=303)
+    on = enabled == "1"
+    set_monitoring(switch, on)
+    db.commit()
+    audit("switch_monitoring", switch=switch.name, enabled=on, actor=user.username)
+    if on:
+        flash(request, f"Monitoring resumed for {switch.name}. Status polls will include this box.", "ok")
+    else:
+        flash(
+            request,
+            f"Monitoring paused for {switch.name}. Status, daily, and on-demand polls skip it until you resume.",
+            "ok",
+        )
+    return RedirectResponse("/admin/inventory", status_code=303)
+
+
+@router.get("/switches/{switch_id}/delete")
+def switch_delete_page(
+    switch_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(_admin)
+):
+    switch = db.get(Switch, switch_id)
+    if switch is None:
+        flash(request, "Switch not found.", "error")
+        return RedirectResponse("/admin/inventory", status_code=303)
+    pending = db.scalar(
+        select(ChangeRequest).where(
+            ChangeRequest.switch_id == switch.id,
+            ChangeRequest.status == STATUS_PENDING,
+        )
+    )
+    return render(
+        request,
+        "admin/switch_delete.html",
+        user=user,
+        switch=switch,
+        has_pending=pending is not None,
+    )
+
+
+@router.post("/switches/{switch_id}/delete")
+def switch_delete(
+    switch_id: int,
+    request: Request,
+    confirm_name: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    switch = db.get(Switch, switch_id)
+    if switch is None:
+        flash(request, "Switch not found.", "error")
+        return RedirectResponse("/admin/inventory", status_code=303)
+    if confirm_name.strip() != switch.name:
+        flash(request, f"Type the switch name {switch.name} exactly to delete it.", "error")
+        return RedirectResponse(f"/admin/switches/{switch_id}/delete", status_code=303)
+    name = delete_switch(db, switch)
+    db.commit()
+    audit("switch_deleted", switch=name, actor=user.username)
+    flash(request, f"Deleted {name} and stopped monitoring it.", "ok")
     return RedirectResponse("/admin/inventory", status_code=303)
 
 

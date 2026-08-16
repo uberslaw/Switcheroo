@@ -42,6 +42,7 @@ a:hover { text-decoration: underline; }
   position: sticky;
   top: 0;
   z-index: 20;
+  flex-wrap: wrap;
 }
 .brand { display: flex; align-items: center; gap: 0.7rem; }
 .brand-mark {
@@ -55,7 +56,7 @@ a:hover { text-decoration: underline; }
 }
 .brand-name { font-weight: 650; letter-spacing: 0.02em; }
 .brand-sub { color: var(--muted); font-size: 0.75rem; }
-.nav { display: flex; gap: 0.4rem; flex: 1; }
+.nav { display: flex; gap: 0.4rem; flex: 1; flex-wrap: wrap; min-width: 0; }
 .nav a {
   color: var(--text);
   padding: 0.35rem 0.65rem;
@@ -66,44 +67,19 @@ a:hover { text-decoration: underline; }
   background: var(--bg-card);
   text-decoration: none;
 }
-.nav-menu {
-  position: relative;
-}
-.nav-menu > summary {
-  list-style: none;
-  cursor: pointer;
+
+.who { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
+.nav-help {
   color: var(--text);
   padding: 0.35rem 0.65rem;
-  border: 1px solid transparent;
-}
-.nav-menu > summary::-webkit-details-marker { display: none; }
-.nav-menu > summary::after { content: " ▾"; color: var(--muted); font-size: 0.75em; }
-.nav-menu > summary.active, .nav-menu > summary:hover {
-  border-color: var(--line);
-  background: var(--bg-card);
-}
-.nav-menu-panel {
-  position: absolute;
-  top: calc(100% + 2px);
-  left: 0;
-  min-width: 220px;
-  background: var(--bg-elev);
   border: 1px solid var(--line);
-  z-index: 40;
-  padding: 0.25rem 0;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
-}
-.nav-menu-panel a {
-  display: block;
-  padding: 0.4rem 0.75rem;
-  color: var(--text);
-}
-.nav-menu-panel a:hover, .nav-menu-panel a.active {
   background: var(--bg-card);
+  font-weight: 650;
+}
+.nav-help:hover, .nav-help.active {
+  border-color: var(--accent);
   text-decoration: none;
 }
-
-.who { display: flex; align-items: center; gap: 0.6rem; }
 .who-name { font-size: 0.9rem; }
 .role-pill {
   font-size: 0.7rem;
@@ -158,6 +134,8 @@ h2 { margin: 0 0 0.5rem; font-size: 1.05rem; }
 .btn-ghost { background: transparent; }
 .btn-small { font-size: 0.75rem; padding: 0.22rem 0.4rem; }
 .btn-warn { border-color: var(--warn); color: var(--warn); }
+.btn-danger { border-color: var(--down); color: var(--down); }
+.btn-danger:hover { background: rgba(211, 107, 74, 0.12); }
 
 .card-grid {
   display: grid;
@@ -173,6 +151,7 @@ h2 { margin: 0 0 0.5rem; font-size: 1.05rem; }
   text-decoration: none;
 }
 .switch-card:hover { border-color: var(--accent); text-decoration: none; }
+.switch-card.is-paused { opacity: 0.72; }
 .switch-card-top { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
 .switch-card h2 { margin: 0; }
 .stat-row { display: flex; gap: 0.8rem; margin: 0.7rem 0; flex-wrap: wrap; }
@@ -321,6 +300,14 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
 .vlan-list { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; padding: 0; list-style: none; }
 .form-grid { display: grid; gap: 0.7rem; max-width: 640px; }
 .form-actions { display: flex; gap: 0.5rem; }
+.check-label {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.check-label input { margin-top: 0.2rem; }
 
 .wrap-wide { max-width: 1800px; }
 .head-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-start; justify-content: flex-end; }

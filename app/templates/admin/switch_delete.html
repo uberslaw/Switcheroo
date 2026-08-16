@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Delete {{ switch.name }} · Switcheroo{% endblock %}
+{% block body %}
+<a class="crumb" href="/admin/inventory">← Inventory</a>
+<h1>Delete {{ switch.name }}</h1>
+<p class="muted">This removes the switch from Switcheroo, deletes its ports and request history, and stops all polling. It does not change the real Catalyst.</p>
+{% if has_pending %}
+<div class="flash flash-error">This switch has pending change requests. Deleting it also drops those queued requests.</div>
+{% endif %}
+<form method="post" class="form-grid">
+  <label>Type the switch name to confirm
+    <input name="confirm_name" required placeholder="{{ switch.name }}" autocomplete="off">
+  </label>
+  <div class="form-actions">
+    <button class="btn btn-danger" type="submit">Delete switch</button>
+    <a class="btn" href="/admin/inventory">Cancel</a>
+  </div>
+</form>
+{% endblock %}

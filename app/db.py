@@ -74,6 +74,10 @@ def _migrate_sqlite() -> None:
             for col, typ in alters.items():
                 if col not in req_names:
                     conn.execute(text(f"ALTER TABLE change_requests ADD COLUMN {col} {typ}"))
+        sw_rows = conn.execute(text("PRAGMA table_info(switches)")).fetchall()
+        sw_names = {row[1] for row in sw_rows}
+        if sw_names and "monitoring_enabled" not in sw_names:
+            conn.execute(text("ALTER TABLE switches ADD COLUMN monitoring_enabled INTEGER DEFAULT 1"))
     _encrypt_legacy_switch_passwords()
 
 

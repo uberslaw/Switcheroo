@@ -12,12 +12,15 @@ def test_help_requires_login(client):
 
 
 def test_help_menu_and_using_page(cs_client, seeded_db):
+    home = cs_client.get("/")
+    assert 'href="/help"' in home.text
     page = cs_client.get("/help")
     assert page.status_code == 200
     assert "Help" in page.text
     assert "Security checklist" in page.text
     assert "Using Switcheroo" in page.text
     assert "Client Services" in page.text
+    assert "pause monitoring" in page.text.lower()
 
 
 def test_security_checklist_page_for_cs(cs_client, seeded_db):

@@ -26,6 +26,7 @@ from app.models import (
 from app.services.cooldown import remaining_seconds
 from app.services.export import build_ports_workbook
 from app.services.switch_service import (
+    MonitoringOff,
     PermissionDenied,
     TroubleshootConflict,
     active_session_for_user,
@@ -280,6 +281,9 @@ def start_ts(
         db.commit()
         flash(request, f"Troubleshooting {port.if_name} for 5 minutes (10s polls, this port only).", "ok")
     except TroubleshootConflict as exc:
+        db.rollback()
+        flash(request, str(exc), "error")
+    except MonitoringOff as exc:
         db.rollback()
         flash(request, str(exc), "error")
     return RedirectResponse(f"/switches/{switch_id}?port={port_id}", status_code=303)

@@ -57,6 +57,8 @@ def create_request(
 ) -> ChangeRequest:
     if request_type not in {REQUEST_VLAN, REQUEST_BOUNCE, REQUEST_NO_SHUTDOWN}:
         raise RequestError(f"Unknown request type: {request_type}")
+    if port.switch is not None and not port.switch.monitoring_enabled:
+        raise RequestError("Monitoring is paused for this switch. Networks can resume it under Inventory.")
     vlan_name = None
     if request_type == REQUEST_VLAN:
         if vlan_id is None:

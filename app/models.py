@@ -74,11 +74,14 @@ class Switch(Base):
     last_daily_poll_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     next_status_poll_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_poll_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    monitoring_enabled: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     ports: Mapped[list[Port]] = relationship(back_populates="switch", cascade="all, delete-orphan")
     vlans: Mapped[list[SwitchVlan]] = relationship(back_populates="switch", cascade="all, delete-orphan")
-    permissions: Mapped[list[UserSwitchPermission]] = relationship(back_populates="switch")
+    permissions: Mapped[list[UserSwitchPermission]] = relationship(
+        back_populates="switch", cascade="all, delete-orphan"
+    )
 
 
 class SwitchVlan(Base):
