@@ -2,7 +2,7 @@
 
 Switcheroo is an **internal** Client Services / Networks website. It is not designed to sit on the public internet. This note is what is already true in the code, what a shared deploy must set, and what remains a residual risk.
 
-Cursor agents follow `.cursor/skills/hardening/SKILL.md` so this brief and the app stay aligned.
+Cursor agents follow `.cursor/skills/hardening/SKILL.md` so this brief and the app stay aligned. Operators can open **Help → Security checklist** in the signed-in app for a live view of this host (done / needs action / still open). Secret values are never shown on that page.
 
 ## How the app is kept from being “open”
 

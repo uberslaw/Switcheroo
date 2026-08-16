@@ -40,6 +40,7 @@ from app.services.request_service import (
     pending_vlan_request,
     release_acknowledgement,
 )
+from app.security_checklist import build_security_report
 from app.services.uptime import faceplate_groups, port_led, problem_reason
 from app.templating import flash, render
 
@@ -136,6 +137,17 @@ def logout(request: Request):
     audit("logout", user_id=user_id, ip=client_ip(request))
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
+
+
+@router.get("/help")
+def help_page(request: Request, user: User = Depends(_current_user)):
+    return render(request, "help.html", user=user)
+
+
+@router.get("/help/security")
+def help_security(request: Request, db: Session = Depends(get_db), user: User = Depends(_current_user)):
+    report = build_security_report(db)
+    return render(request, "help_security.html", user=user, report=report)
 
 
 @router.get("/")

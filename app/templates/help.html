@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Help · Switcheroo{% endblock %}
+{% block body %}
+<div class="help-layout">
+  <aside class="help-side">
+    <p class="tiny">Help</p>
+    <a href="/help" class="active">Using Switcheroo</a>
+    <a href="/help/security">Security checklist</a>
+  </aside>
+  <div>
+    <div class="page-head">
+      <div>
+        <h1>Using Switcheroo</h1>
+        <p class="muted">Internal Client Services / Networks desk for Catalyst 9300 access ports. Writes wait for Networks unless an auto-approve policy matches.</p>
+      </div>
+    </div>
+
+    <section class="panel">
+      <h2>Client Services</h2>
+      <ul class="help-list">
+        <li>Open <strong>Switches</strong>, pick a box, click a port on the faceplate.</li>
+        <li>Request a VLAN change, bounce, or no-shutdown from the right-hand pane. That queues a request — it does not hit the switch until Networks approves.</li>
+        <li>On-demand refresh is shared per port (60s cooldown) so two people cannot stampede the same interface.</li>
+        <li>Troubleshooting mode polls one port for five minutes, then stops.</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>Networks</h2>
+      <ul class="help-list">
+        <li><strong>Approvals</strong> (and the Requests page) accept or reject queued writes.</li>
+        <li>Teams cards include <strong>I'm on it</strong> so two people do not work the same VLAN request.</li>
+        <li><strong>Inventory</strong> and <strong>Access</strong> are where switches, TACACS credentials, and CS permissions live.</li>
+        <li>Device passwords are stored encrypted. Do not paste production TACACS into a shared lab box.</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>Security</h2>
+      <p class="muted">Open the checklist for what this build already does, what <em>this host</em> still needs in <code>.env</code>, and what remains residual (SSO, TLS at the proxy, and similar).</p>
+      <p><a class="btn btn-primary" href="/help/security">Security checklist</a></p>
+    </section>
+  </div>
+</div>
+{% endblock %}

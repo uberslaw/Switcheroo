@@ -27,6 +27,7 @@ Do **not** use this skill to write exploits, attack playbooks, or "prove it is v
 3. Every new control needs: code, a test in `tests/test_security.py` (or a focused sibling), an `.env.example` knob if configurable, and a line in `docs/security.md`.
 4. Lab convenience stays on loopback with the documented lab key. Shared deploy uses `SWITCHEROO_REQUIRE_HARDENED=true`, which must **refuse** to start until secrets, HTTPS cookies, allowed hosts, and a non-lab first user are in place.
 5. After changing hardening, run `python3 -m pytest --timeout=30 --timeout-method=thread`.
+6. Keep the in-app **Help → Security checklist** (`app/security_checklist.py`, `/help/security`) in sync: product items stay `done`, host items read live settings, residual items stay `open`. Do not put secret values in item details.
 
 ## What Switcheroo already does
 

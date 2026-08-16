@@ -66,6 +66,43 @@ a:hover { text-decoration: underline; }
   background: var(--bg-card);
   text-decoration: none;
 }
+.nav-menu {
+  position: relative;
+}
+.nav-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  color: var(--text);
+  padding: 0.35rem 0.65rem;
+  border: 1px solid transparent;
+}
+.nav-menu > summary::-webkit-details-marker { display: none; }
+.nav-menu > summary::after { content: " ▾"; color: var(--muted); font-size: 0.75em; }
+.nav-menu > summary.active, .nav-menu > summary:hover {
+  border-color: var(--line);
+  background: var(--bg-card);
+}
+.nav-menu-panel {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 220px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  z-index: 40;
+  padding: 0.25rem 0;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+.nav-menu-panel a {
+  display: block;
+  padding: 0.4rem 0.75rem;
+  color: var(--text);
+}
+.nav-menu-panel a:hover, .nav-menu-panel a.active {
+  background: var(--bg-card);
+  text-decoration: none;
+}
+
 .who { display: flex; align-items: center; gap: 0.6rem; }
 .who-name { font-size: 0.9rem; }
 .role-pill {
@@ -606,3 +643,44 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
 
 #faceplate-live, .chassis { width: 100%; }
 .desk-main { min-width: 0; }
+
+.help-layout {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+.help-side {
+  position: sticky;
+  top: 72px;
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.4rem 0;
+}
+.help-side a {
+  color: var(--text);
+  padding: 0.35rem 0.55rem;
+  border: 1px solid transparent;
+}
+.help-side a.active, .help-side a:hover {
+  border-color: var(--line);
+  background: var(--bg-card);
+  text-decoration: none;
+}
+.help-list { margin: 0.4rem 0 0; padding-left: 1.15rem; color: var(--text); }
+.help-list li { margin: 0.35rem 0; }
+.check-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  align-items: center;
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  background: var(--bg-card);
+}
+.check-table td:first-child { white-space: nowrap; width: 8rem; }
+@media (max-width: 800px) {
+  .help-layout { grid-template-columns: 1fr; }
+  .help-side { position: static; grid-auto-flow: column; justify-content: start; }
+}

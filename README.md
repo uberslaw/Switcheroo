@@ -172,7 +172,7 @@ tests/
 data/           sqlite + switcheroo.log (created at runtime, not committed)
 ```
 
-Give this to Cyber: **[docs/security.md](docs/security.md)** (bind address, hashing, encrypted device secrets, CSRF, cookies, residual risk).
+Give this to Cyber: **[docs/security.md](docs/security.md)** (bind address, hashing, encrypted device secrets, CSRF, cookies, residual risk). In the running app: **Help → Security checklist**.
 Cursor agents: **[`.cursor/skills/hardening/SKILL.md`](.cursor/skills/hardening/SKILL.md)** (checklist of controls people usually miss).
 
 ## Gaps (v1)
