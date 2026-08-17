@@ -125,6 +125,168 @@ function New-WinswXml {
     [System.IO.File]::WriteAllText($XmlPath, $xml, $utf8)
 }
 
+function Get-VenvPythonLockers {
+    param(
+        [string]$ProjectDir,
+        [string]$ServiceName = ""
+    )
+    $root = [System.IO.Path]::GetFullPath($ProjectDir).TrimEnd('\')
+    $needles = @(
+        (Join-Path $root '.venv')
+        (Join-Path $root 'venv')
+    )
+
+    function Test-VenvNeedle {
+        param([string]$Hay)
+        if ([string]::IsNullOrWhiteSpace($Hay)) { return $false }
+        foreach ($n in $needles) {
+            if ([string]::IsNullOrWhiteSpace($n)) { continue }
+            if ($Hay.IndexOf($n, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+            $fwd = $n.Replace('\', '/')
+            if ($Hay.IndexOf($fwd, [StringComparison]::OrdinalIgnoreCase) -ge 0) { return $true }
+        }
+        return $false
+    }
+
+    $rows = @{}
+    try {
+        $procs = Get-CimInstance -ClassName Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe' OR Name='pythonservice.exe'" -ErrorAction Stop
+        foreach ($p in @($procs)) {
+            $procId = [int]$p.ProcessId
+            if ($procId -le 0) { continue }
+            $rows[$procId] = [pscustomobject]@{
+                Pid         = $procId
+                ParentPid   = [int]$p.ParentProcessId
+                Name        = [string]$p.Name
+                Path        = [string]$p.ExecutablePath
+                CommandLine = [string]$p.CommandLine
+            }
+        }
+    }
+    catch {
+        Write-InstallLog "Win32_Process query failed: $($_.Exception.Message)" -Level "WARN"
+    }
+
+    $servicePids = @{}
+    if ($ServiceName) {
+        try {
+            $svc = Get-CimInstance -ClassName Win32_Service -Filter ("Name='" + ($ServiceName.Replace("'", "''")) + "'") -ErrorAction Stop
+            if ($svc -and [int]$svc.ProcessId -gt 0) {
+                $procId = [int]$svc.ProcessId
+                $servicePids[$procId] = $true
+                $pathName = ([string]$svc.PathName).Trim().Trim('"')
+                if ($rows.ContainsKey($procId)) {
+                    if (-not $rows[$procId].Path) { $rows[$procId].Path = $pathName }
+                    if (-not $rows[$procId].CommandLine) { $rows[$procId].CommandLine = $pathName }
+                }
+                else {
+                    $leaf = if ($pathName) { [System.IO.Path]::GetFileName($pathName) } else { "" }
+                    if ($leaf -match '(?i)^(python\.exe|pythonw\.exe|pythonservice\.exe)$') {
+                        $rows[$procId] = [pscustomobject]@{
+                            Pid         = $procId
+                            ParentPid   = 0
+                            Name        = $leaf
+                            Path        = $pathName
+                            CommandLine = $pathName
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+    }
+
+    $matched = @{}
+    foreach ($row in $rows.Values) {
+        if ((Test-VenvNeedle $row.Path) -or (Test-VenvNeedle $row.CommandLine) -or ($row.ParentPid -gt 0 -and $servicePids.ContainsKey($row.ParentPid))) {
+            $matched[$row.Pid] = $row
+        }
+    }
+    $changed = $true
+    while ($changed) {
+        $changed = $false
+        foreach ($row in $rows.Values) {
+            if ($matched.ContainsKey($row.Pid)) { continue }
+            if ($row.ParentPid -gt 0 -and $matched.ContainsKey($row.ParentPid)) {
+                $matched[$row.Pid] = $row
+                $changed = $true
+            }
+        }
+    }
+
+    $hits = @($matched.Values | Sort-Object Pid | ForEach-Object {
+            [pscustomobject]@{
+                Pid         = $_.Pid
+                Name        = $_.Name
+                Path        = $_.Path
+                CommandLine = $_.CommandLine
+            }
+        })
+    return @($hits)
+}
+
+function Write-VenvLockers {
+    param($Lockers, [string]$Context)
+    Write-Host ""
+    if (-not $Lockers -or @($Lockers).Count -eq 0) {
+        Write-InstallLog "$Context : no python.exe / pythonw.exe / pythonservice.exe using this install's .venv or venv"
+        Write-InstallLog "Note: Heimdall (C:\Heimdall) and Serraview Insights (C:\Serraview Insights) use other venvs. They do not lock this product's site-packages. The blocker is this product's python."
+        Write-Host "Python using this venv: (none)"
+        return
+    }
+    Write-InstallLog "$Context : $(@($Lockers).Count) process(es) using this venv (pip cannot overwrite locked files):" -Level "WARN"
+    Write-Host "Python processes using this venv:" -ForegroundColor Yellow
+    foreach ($h in @($Lockers)) {
+        $line = "  PID $($h.Pid)  $($h.Name)  path=$($h.Path)  cmd=$($h.CommandLine)"
+        Write-InstallLog $line -Level "WARN"
+        Write-Host $line -ForegroundColor Yellow
+    }
+}
+
+function Stop-ProductServiceForPip {
+    param([string]$ServiceName)
+    $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if (-not $svc) {
+        Write-InstallLog "Service $ServiceName is not installed yet (nothing to stop before pip)"
+        return
+    }
+    if ($svc.Status -eq 'Stopped') {
+        Write-InstallLog "Service $ServiceName already Stopped"
+        return
+    }
+    Write-InstallLog "Stopping $ServiceName before pip (running venv python holds package files)"
+    Write-Host "Stopping $ServiceName so pip can update this venv..." -ForegroundColor Cyan
+    try {
+        Stop-Service -Name $ServiceName -Force -ErrorAction Stop
+    }
+    catch {
+        Write-InstallLog "Stop-Service failed: $($_.Exception.Message)" -Level "WARN"
+    }
+    $deadline = (Get-Date).AddSeconds(30)
+    do {
+        Start-Sleep -Milliseconds 400
+        $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -eq 'Stopped') { break }
+    } while ((Get-Date) -lt $deadline)
+    $state = if ($svc) { [string]$svc.Status } else { "missing" }
+    Write-InstallLog "Service $ServiceName status=$state"
+}
+
+function Assert-VenvUnlockedForPip {
+    param([string]$ProjectDir, [string]$ServiceName)
+    $deadline = (Get-Date).AddSeconds(15)
+    $lockers = @()
+    do {
+        $lockers = @(Get-VenvPythonLockers -ProjectDir $ProjectDir -ServiceName $ServiceName)
+        if ($lockers.Count -eq 0) { return }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+
+    Write-VenvLockers -Lockers $lockers -Context "After stopping $ServiceName"
+    $pids = (@($lockers) | ForEach-Object { $_.Pid }) -join ', '
+    Fail "Cannot pip while this venv is loaded. Close PID(s) $pids (Cursor, a second Launch Control Start, leftover python), then retry Install. Other products' venvs do not lock these files."
+}
+
 try {
     Assert-Administrator
 
@@ -200,6 +362,11 @@ try {
     if (-not (Test-PythonAtLeast312 -VersionText $venvVer)) {
         Fail "Venv Python is $venvVer. Recreate .venv with Python 3.12+."
     }
+
+    Write-VenvLockers -Lockers (Get-VenvPythonLockers -ProjectDir $script:RepoRoot -ServiceName $script:ServiceName) -Context "Before stopping service"
+    Stop-ProductServiceForPip -ServiceName $script:ServiceName
+    Write-VenvLockers -Lockers (Get-VenvPythonLockers -ProjectDir $script:RepoRoot -ServiceName $script:ServiceName) -Context "After stopping $($script:ServiceName)"
+    Assert-VenvUnlockedForPip -ProjectDir $script:RepoRoot -ServiceName $script:ServiceName
 
     $req = Join-Path $script:RepoRoot "requirements.txt"
     if (-not (Test-Path -LiteralPath $req)) { Fail "Missing $req" }
