@@ -94,7 +94,7 @@
           }
         }
       },
-      "LaunchControl.Standard/1.2.0": {
+      "LaunchControl.Standard/1.2.2": {
         "type": "project",
         "framework": ".NETCoreApp,Version=v8.0",
         "dependencies": {
@@ -251,7 +251,7 @@
         "useSharedDesignerContext.txt"
       ]
     },
-    "LaunchControl.Standard/1.2.0": {
+    "LaunchControl.Standard/1.2.2": {
       "type": "project",
       "path": "../../Users/christopher.owen/Projects/master-launch-control/src/LaunchControl.Standard/LaunchControl.Standard.csproj",
       "msbuildProject": "../../Users/christopher.owen/Projects/master-launch-control/src/LaunchControl.Standard/LaunchControl.Standard.csproj"
@@ -259,7 +259,7 @@
   },
   "projectFileDependencyGroups": {
     "net8.0-windows": [
-      "LaunchControl.Standard >= 1.2.0"
+      "LaunchControl.Standard >= 1.2.2"
     ]
   },
   "packageFolders": {

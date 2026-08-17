@@ -12,7 +12,7 @@ This is a **lab-first v1**. Default driver is an in-process simulator so the sit
 | --- | --- |
 | Runtime | Python **3.12 or newer** on PATH (`python`). Verified on this host with 3.14. Not bundled. |
 | OS | Windows PowerShell 5.1+ (scripts below). Linux/macOS work with the same `python -m` flow (no WinSW service). |
-| Privileges | **Install / Start / Stop / Restart of the Windows service** needs Run as administrator (UAC) once for install. Launch Control can **watch** status, PID, logs, and `/health` without admin. |
+| Privileges | **Install / Start / Stop / Restart of the Windows service** needs administrator. Preferred ops path: run **Master Launch Control as administrator once**, leave it open, then **Open Launch Control** from the card (this window inherits that token; Install runs in-process with no second UAC). Launch Control can **watch** status, PID, logs, and `/health` without admin. Admin does **not** unlock a pywin32 DLL held by a running Python service — Stop first. |
 | Network | Safe first-run default is **127.0.0.1:8080** (this machine only). For other PCs on the internal LAN set `SWITCHEROO_HOST=0.0.0.0` and allow inbound TCP 8080. No campus switches, RESTCONF, SSH, or ServiceNow are required. |
 | Data | SQLite + logs under `data\` (created at startup). The process must be able to write that folder. |
 | Auth | Local username/password. **Not Entra SSO.** Seeded lab passwords are public in this README. Each VLAN ticket also records the **Windows account of the process running Switcheroo** (`USERDOMAIN\USERNAME`). Fine for a local POC on a CS/Networks PC; a shared server would need SSO, or the field would be the service account. |
@@ -60,9 +60,9 @@ The window must show:
 - **Health** — `GET /health` ok/fail and latency
 - Bind URL and python path in the header
 
-Start / Stop / Restart talk to the **service** when it is installed. Without elevation those buttons log `Run as administrator to control the service`; status, PID, logs, and health still update.
+Start / Stop / Restart talk to the **service** when it is installed. Without elevation those buttons refuse with a message (not a silent no-op); status, PID, logs, and health still update.
 
-If the service is not installed yet, Start will launch `python -m app` for this session only (dies at logoff / reboot). Use **Install Windows service** in the UI (UAC) or the script above.
+If the service is not installed yet, Start will launch `python -m app` for this session only (dies at logoff / reboot). Use **Install Windows service** in the UI. If Launch Control is already admin (opened from an elevated Master Launch Control), install runs in this token with no extra UAC. Otherwise Windows will prompt. **Stop** the service before reinstall if Python still holds this venv's pywin32 DLL.
 
 ### 3. Optional: raw console (no service)
 

@@ -978,10 +978,49 @@ function Invoke-ElevatedScript {
         Write-LcLog "Missing $path" -Level "ERROR"
         return
     }
-    Write-LcLog "Launching $FileName (UAC elevation)"
-    Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList @(
-        "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $path
-    ) | Out-Null
+    $full = (Resolve-Path -LiteralPath $path).Path
+    $needUac = -not $script:IsAdmin
+    $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $full)
+    if ($needUac) {
+        Write-LcLog "Launching $FileName with UAC elevation"
+        try {
+            Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList $argList | Out-Null
+        }
+        catch {
+            Write-LcLog "UAC cancelled or blocked — Windows service was not installed or changed." -Level "ERROR"
+        }
+        return
+    }
+
+    Write-LcLog "Already elevated — running $FileName in this token (no UAC spawn)"
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = "powershell.exe"
+    $psi.Arguments = (($argList | ForEach-Object {
+        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '""') + '"' } else { $_ }
+    }) -join " ")
+    $psi.WorkingDirectory = $script:RepoRoot
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    try { $psi.EnvironmentVariables["LC_INSTALL_NOPAUSE"] = "1" } catch { }
+    try {
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        if (-not $proc) {
+            Write-LcLog "Installer did not start a process." -Level "ERROR"
+            return
+        }
+        $stderr = $proc.StandardError.ReadToEnd()
+        $stdout = $proc.StandardOutput.ReadToEnd()
+        $proc.WaitForExit()
+        if ($stderr) { Write-LcLog $stderr.TrimEnd() -Level "WARN" }
+        if ($stdout) { Write-LcLog $stdout.TrimEnd() }
+        Write-LcLog ("Installer exit code: {0}" -f $proc.ExitCode)
+    }
+    catch {
+        Write-LcLog ("Install failed: {0}" -f $_.Exception.Message) -Level "ERROR"
+    }
 }
 
 function New-LcButton {

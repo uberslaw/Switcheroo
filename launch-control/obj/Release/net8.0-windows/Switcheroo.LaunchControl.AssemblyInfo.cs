@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Switcheroo.LaunchControl")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+af699ed33e4473f3f4fb82206fc24987d3209309")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+47f23fd09f981370aa2d00a9c3ddb24cfec89b06")]
 [assembly: System.Reflection.AssemblyProductAttribute("Switcheroo.LaunchControl")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Switcheroo.LaunchControl")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

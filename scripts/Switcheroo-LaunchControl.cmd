@@ -2,6 +2,10 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
+rem Preferred: open this from an elevated Master Launch Control so the child
+rem inherits admin (no extra UAC). For service install from this cmd alone:
+rem right-click → Run as administrator.
+
 set "EXE=%~dp0..\launch-control\bin\Release\net8.0-windows\Switcheroo.LaunchControl.exe"
 if not exist "%EXE%" set "EXE=%~dp0..\launch-control\bin\Debug\net8.0-windows\Switcheroo.LaunchControl.exe"
 if not exist "%EXE%" (
@@ -28,5 +32,7 @@ if not exist "%EXE%" (
   exit /b 1
 )
 
-start "" "%EXE%" %*
+rem GUI WinExe: invoke directly so an elevated parent (Master Launch Control) keeps its token.
+rem `start ""` uses ShellExecute and can drop elevation.
+"%EXE%" %*
 exit /b 0
