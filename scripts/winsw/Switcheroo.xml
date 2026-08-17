@@ -1,0 +1,21 @@
+<service>
+  <id>Switcheroo</id>
+  <name>Switcheroo</name>
+  <description>Switcheroo port-status website. Automatic Delayed Start. Restart on failure.</description>
+  <executable>C:\Switcheroo\.venv\Scripts\python.exe</executable>
+  <arguments>-m app</arguments>
+  <workingdirectory>C:\Switcheroo</workingdirectory>
+  <logpath>C:\Switcheroo\data</logpath>
+  <log mode="roll-by-size">
+    <sizeThreshold>2048</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+  <env name="PYTHONUNBUFFERED" value="1" />
+  <onfailure action="restart" delay="5 sec" />
+  <onfailure action="restart" delay="10 sec" />
+  <onfailure action="restart" delay="30 sec" />
+  <resetfailure>1 hour</resetfailure>
+  <startmode>Automatic</startmode>
+  <delayedAutoStart>true</delayedAutoStart>
+  <stoptimeout>15 sec</stoptimeout>
+</service>

@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
+from app import __version__
 from app.config import get_settings
 from app.db import SessionLocal, init_db
 from app.diagnostics import clear_pid_file, sync_log_level, write_pid_file
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
         return {
             "ok": True,
             "app": "switcheroo",
+            "version": __version__,
             "driver": settings.driver,
             "testing": settings.testing,
         }

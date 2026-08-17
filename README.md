@@ -11,7 +11,8 @@ This is a **lab-first v1**. Default driver is an in-process simulator so the sit
 | Topic | What this repo assumes |
 | --- | --- |
 | Runtime | Python **3.12 or newer** on PATH (`python`). Verified on this host with 3.14. Not bundled. |
-| OS | Windows PowerShell (commands below). Linux/macOS work with the same `python -m` flow. |
+| OS | Windows PowerShell 5.1+ (scripts below). Linux/macOS work with the same `python -m` flow (no WinSW service). |
+| Privileges | **Install / Start / Stop / Restart of the Windows service** needs Run as administrator (UAC) once for install. Launch Control can **watch** status, PID, logs, and `/health` without admin. |
 | Network | First run binds **127.0.0.1:8080** only. No campus switches, RESTCONF, SSH, or ServiceNow are required. |
 | Data | SQLite + logs under `data\` (created at startup). The process must be able to write that folder. |
 | Auth | Local username/password. **Not Entra SSO.** Seeded lab passwords are public in this README. Each VLAN ticket also records the **Windows account of the process running Switcheroo** (`USERDOMAIN\USERNAME`). Fine for a local POC on a CS/Networks PC; a shared server would need SSO, or the field would be the service account. |
@@ -24,13 +25,48 @@ Lab-only defaults that must change before any shared/internal deploy:
 - Users `networks` / `networks` and `cs` / `cs`
 - Simulated mgmt IPs `192.0.2.10` and `192.0.2.11` (RFC 5737 TEST-NET-1, not live devices)
 
-## Windows first run
+## Windows first run (service + Launch Control)
 
-Usual operator path: double-click **`scripts\Switcheroo-LaunchControl.cmd`** (or run `scripts\New-SwitcherooShortcuts.cmd` once for a desktop shortcut). That window starts and stops the site, tails stdout, and opens log folders. It is **not** a Windows service — it supervises `python -m app`.
+The supported operator path is a **Windows service** so the site comes back after reboot. **Launch Control** is an out-of-band monitor — not the website.
 
-First run still needs Python **3.12+** on PATH. Launch Control creates `.venv` and copies `.env` if missing.
+### 1. Install the service (administrator, once)
 
-Raw console (same process, no UI): `.\run.ps1`
+Python **3.12+** must be on PATH the first time (the installer creates `.venv` and copies `.env` if missing). WinSW (MIT) is downloaded into `scripts\winsw\` or you can drop `WinSW.NET461.exe` there for an offline box. No Visual Studio.
+
+```powershell
+# Elevated PowerShell
+cd C:\Switcheroo
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-service.ps1
+```
+
+The script fail-fast checks Python, venv, `.env`, and a writable `data\`, then installs service **`Switcheroo`** (`C:\Switcheroo\.venv\Scripts\python.exe -m app`, working directory `C:\Switcheroo`), sets **Automatic Delayed Start** and **restart on failure**, starts it, and verifies:
+
+- `Get-Service Switcheroo` is **Running**
+- `GET http://127.0.0.1:8080/health` returns `ok`
+
+Logs: `data\install-service.log`, `data\switcheroo.log`, plus WinSW `data\Switcheroo.out.log` / `.err.log` / `.wrapper.log`.
+
+Uninstall (also elevated): `.\scripts\uninstall-service.ps1`
+
+### 2. Launch Control (monitor)
+
+Double-click **`scripts\Switcheroo-LaunchControl.cmd`** (or run `scripts\New-SwitcherooShortcuts.cmd` once for a desktop shortcut).
+
+The window must show:
+
+- **Status** from the Windows service (Running / Stopped / Starting / Stopped (failed)) or from an attached `python -m app` if the service is not installed
+- **PID** of the listening python process (never `-` while Running)
+- **Live console** — last 200 lines of `data\switcheroo.log` and follow (the black pane is a log tail; empty is a bug)
+- **Health** — `GET /health` ok/fail and latency
+- Bind URL and python path in the header
+
+Start / Stop / Restart talk to the **service** when it is installed. Without elevation those buttons log `Run as administrator to control the service`; status, PID, logs, and health still update.
+
+If the service is not installed yet, Start will launch `python -m app` for this session only (dies at logoff / reboot). Use **Install Windows service** in the UI (UAC) or the script above.
+
+### 3. Optional: raw console (no service)
+
+`.\run.ps1` or:
 
 ```powershell
 cd C:\Switcheroo
@@ -151,7 +187,7 @@ python -m pytest --timeout=30 --timeout-method=thread
 ## Project layout
 
 ```
-scripts/       Windows Launch Control (Start/Stop/Restart, live console, diagnostics toggle)
+scripts/       Launch Control, install-service.ps1 / uninstall-service.ps1, WinSW wrapper
 app/            FastAPI app (uvicorn app.main:app)
 app/drivers/    SwitchDriver: simulator + cisco_iosxe + ServiceNow Table API (dry-run default)
 docs/           IAM / ServiceNow POC brief
@@ -163,6 +199,7 @@ data/           sqlite + switcheroo.log (created at runtime, not committed)
 
 ## Gaps (v1)
 
+- Installing the Windows service cannot be proven in un-elevated CI. On a real box run the elevated `install-service.ps1` command above; expected: service Running and `/health` ok.
 - Entra ID / SSO is not implemented (local users only).
 - ServiceNow live Table API is implemented but **off** until an integration user exists. Arup incident `state` / `close_code` values are unverified.
 - Real 9300 YANG paths may need site-specific adjustment once RESTCONF is pointed at a lab switch.
