@@ -13,7 +13,7 @@ This is a **lab-first v1**. Default driver is an in-process simulator so the sit
 | Runtime | Python **3.12 or newer** on PATH (`python`). Verified on this host with 3.14. Not bundled. |
 | OS | Windows PowerShell 5.1+ (scripts below). Linux/macOS work with the same `python -m` flow (no WinSW service). |
 | Privileges | **Install / Start / Stop / Restart of the Windows service** needs Run as administrator (UAC) once for install. Launch Control can **watch** status, PID, logs, and `/health` without admin. |
-| Network | First run binds **127.0.0.1:8080** only. No campus switches, RESTCONF, SSH, or ServiceNow are required. |
+| Network | Safe first-run default is **127.0.0.1:8080** (this machine only). For other PCs on the internal LAN set `SWITCHEROO_HOST=0.0.0.0` and allow inbound TCP 8080. No campus switches, RESTCONF, SSH, or ServiceNow are required. |
 | Data | SQLite + logs under `data\` (created at startup). The process must be able to write that folder. |
 | Auth | Local username/password. **Not Entra SSO.** Seeded lab passwords are public in this README. Each VLAN ticket also records the **Windows account of the process running Switcheroo** (`USERDOMAIN\USERNAME`). Fine for a local POC on a CS/Networks PC; a shared server would need SSO, or the field would be the service account. |
 | Hardware | `SWITCHEROO_DRIVER=simulator` by default. Real 9300s need RESTCONF (preferred), SSH/Netmiko fallback, optional SNMP, and a **dedicated TACACS or local user** — never a personal login. |
@@ -86,14 +86,18 @@ Open http://127.0.0.1:8080
 
 These are **lab defaults**. Create real users under Access before sharing the site.
 
-To listen on the LAN (internal only):
+### Remote access from another computer (internal LAN only)
 
-```powershell
-# in .env
-SWITCHEROO_HOST=0.0.0.0
-```
+This is **not** a public internet app. Bind all interfaces only on a firewalled internal host. Do not port-forward 8080 and do not disable Windows Firewall.
 
-Then restrict with Windows Firewall / reverse proxy. Do not put Switcheroo on the public internet.
+1. In `.env` set `SWITCHEROO_HOST=0.0.0.0` (keep `SWITCHEROO_PORT=8080` unless you already changed it). Restart the **Switcheroo** service (or `python -m app`). Confirm listen with `Get-NetTCPConnection -LocalPort 8080` — you want `0.0.0.0:8080` or `[::]:8080` **Listen**, not `127.0.0.1:8080`.
+2. Allow **inbound TCP 8080** on the Windows Firewall profile the NIC actually uses (**Domain** vs **Private**). A rule on the wrong profile looks like it was added but still blocks.
+3. Clients open `http://<this-machine-LAN-ip>:8080` (not `127.0.0.1`). Example: `http://192.168.1.10:8080`.
+
+| Symptom | Meaning |
+| --- | --- |
+| Connection **refused** | Nothing is listening on the LAN NIC (still bound to loopback, or the process is down). |
+| Connection **timeout** | Packet is dropped — firewall profile, routing, or a filter in between. |
 
 Logs: `data\switcheroo.log`, `data\diagnostics.log` (after **Diagnostics ON** in Launch Control)  
 Database: `data\switcheroo.db`
