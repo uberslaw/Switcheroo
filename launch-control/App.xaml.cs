@@ -24,6 +24,7 @@ public partial class App : Application
             ProductName = "Switcheroo",
             AppDataFolder = "Switcheroo",
             ServiceNames = ["Switcheroo"],
+            ShowVenvUi = true,
             InstallRoot = root,
             HealthUrl = $"http://{Normalize(host)}:{port}/health",
             BrowserUrl = $"http://{Normalize(host)}:{port}/",

@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Switcheroo\\launch-control\\Switcheroo.LaunchControl.csproj": {}
+    "c:\\switcheroo\\launch-control\\Switcheroo.LaunchControl.csproj": {}
   },
   "projects": {
-    "C:\\Switcheroo\\launch-control\\Switcheroo.LaunchControl.csproj": {
+    "c:\\switcheroo\\launch-control\\Switcheroo.LaunchControl.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Switcheroo\\launch-control\\Switcheroo.LaunchControl.csproj",
+        "projectUniqueName": "c:\\switcheroo\\launch-control\\Switcheroo.LaunchControl.csproj",
         "projectName": "Switcheroo.LaunchControl",
-        "projectPath": "C:\\Switcheroo\\launch-control\\Switcheroo.LaunchControl.csproj",
+        "projectPath": "c:\\switcheroo\\launch-control\\Switcheroo.LaunchControl.csproj",
         "packagesPath": "C:\\Users\\christopher.owen\\.nuget\\packages\\",
-        "outputPath": "C:\\Switcheroo\\launch-control\\obj\\",
+        "outputPath": "c:\\switcheroo\\launch-control\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
