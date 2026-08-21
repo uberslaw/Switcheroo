@@ -1,0 +1,24 @@
+<section class="patch-panel" aria-label="{{ panel.name }}">
+  <header class="patch-panel-head">
+    <h3>{{ panel.name }}</h3>
+    <p class="muted">{% if panel.placement == 'above' %}RU above{% elif panel.placement == 'below' %}RU below{% endif %}{% if panel.switch %} {{ panel.switch.name }}{% endif %} · {{ panel.room }} · {{ panel.port_count }} ports · 20 cm to closest</p>
+  </header>
+  <div class="jack-row">
+    {% for jack in panel.ports|sort(attribute='position') %}
+      {% set outlet = jack_fos.get(jack.id) %}
+      {% set patched = jack.patch is not none %}
+      {% if outlet %}
+      <a class="jack {% if patched %}jack-patched{% else %}jack-open{% endif %} {% if selected_fo and selected_fo.id == outlet.id %}jack-selected{% endif %}"
+         href="/offices/{{ office.slug }}?view=patching&amp;fo={{ outlet.code }}{% if active_stack_key %}&amp;stack={{ active_stack_key }}{% endif %}"
+         hx-get="/partials/offices/{{ office.slug }}/fo-pane?fo={{ outlet.code }}{% if active_stack_key %}&amp;stack={{ active_stack_key }}{% endif %}"
+         hx-target="#fo-pane-slot"
+         hx-push-url="/offices/{{ office.slug }}?view=patching&amp;fo={{ outlet.code }}{% if active_stack_key %}&amp;stack={{ active_stack_key }}{% endif %}"
+         title="{{ outlet.code }}">
+        <span class="jack-num">{{ jack.field_number }}</span>
+      </a>
+      {% else %}
+      <span class="jack jack-empty" title="No FO"><span class="jack-num">{{ jack.field_number }}</span></span>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>

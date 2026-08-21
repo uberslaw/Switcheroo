@@ -39,8 +39,12 @@ class TroubleshootConflict(Exception):
     pass
 
 
+def _skip_cs_grants() -> bool:
+    return get_settings().open_access
+
+
 def visible_switches(db: Session, user: User) -> list[Switch]:
-    if user.role == ROLE_NETWORKS:
+    if user.role == ROLE_NETWORKS or _skip_cs_grants():
         return list(db.scalars(select(Switch).order_by(Switch.name)).all())
     rows = db.scalars(
         select(Switch)
@@ -55,7 +59,7 @@ def get_switch_for_user(db: Session, user: User, switch_id: int) -> Switch:
     switch = db.get(Switch, switch_id)
     if switch is None:
         raise PermissionDenied("Switch not found")
-    if user.role == ROLE_NETWORKS:
+    if user.role == ROLE_NETWORKS or _skip_cs_grants():
         return switch
     allowed = db.scalar(
         select(UserSwitchPermission).where(

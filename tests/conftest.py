@@ -21,6 +21,8 @@ os.environ["SERVICENOW_DRY_RUN"] = "true"
 os.environ["SERVICENOW_INSTANCE"] = ""
 os.environ["SERVICENOW_USERNAME"] = ""
 os.environ["SERVICENOW_PASSWORD"] = ""
+# Default matches lab: every signed-in user sees every switch.
+os.environ.setdefault("SWITCHEROO_OPEN_ACCESS", "true")
 
 import httpx
 import pytest
@@ -103,6 +105,12 @@ def networks_client(client):
     response = client.post("/login", data={"username": "networks", "password": "networks"}, follow_redirects=False)
     assert response.status_code == 303
     return client
+
+
+@pytest.fixture
+def closed_access(monkeypatch):
+    """Enforce the CS grant table (SWITCHEROO_OPEN_ACCESS=false)."""
+    monkeypatch.setenv("SWITCHEROO_OPEN_ACCESS", "false")
 
 
 def add_cs_user(db, username: str, password: str, switch_names: list[str] | None = None) -> User:

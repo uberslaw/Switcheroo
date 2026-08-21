@@ -1,0 +1,43 @@
+<aside id="port-pane" class="port-pane fo-pane">
+  {% if not selected_fo and not selected %}
+  <div class="pane-empty">
+    <strong>Search an FO or click a switch port</strong>
+    <p class="muted">The pane shows patching (FO / unpatched) plus live network fields for the selected switch port.</p>
+  </div>
+  {% else %}
+  <header class="pane-head">
+    {% if selected_fo %}
+    <div class="pane-if mono">{{ selected_fo.code }}</div>
+    <div class="muted">{{ selected_fo.floor }} · {{ selected_fo.room }}</div>
+    <div class="pane-label">{{ selected_fo.label or "Field outlet" }}</div>
+    {% if fo_patch %}
+    <p class="fo-patched">Patched to {{ selected_fo.code }}</p>
+    {% else %}
+    <p class="muted">Unpatched</p>
+    {% endif %}
+    {% elif selected %}
+    <div class="pane-if mono">{{ selected.if_name|giface }}</div>
+    <div class="muted">{{ switch.name if switch else "" }}</div>
+    <p class="muted">Unpatched</p>
+    {% endif %}
+  </header>
+
+  {% if selected and selected_view and switch %}
+  <div id="pane-status">
+    {% include "partials/pane_status.html" %}
+  </div>
+  {% elif selected_fo and not fo_patch %}
+  <p class="muted">No live network block — this outlet is not patched to a switch port.</p>
+  {% endif %}
+
+  {% if selected_fo and not fo_patch %}
+  <form class="stack-tight" method="get" action="/offices/{{ office.slug }}">
+    <input type="hidden" name="view" value="patching">
+    <input type="hidden" name="stack" value="{{ active_stack_key }}">
+    <input type="hidden" name="fo" value="{{ selected_fo.code }}">
+    <input type="hidden" name="show_available" value="1">
+    <button class="btn btn-primary" type="submit">Show available ports</button>
+  </form>
+  {% endif %}
+  {% endif %}
+</aside>

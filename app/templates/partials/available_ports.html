@@ -1,0 +1,57 @@
+{% if show_available %}
+<section class="available-block">
+  <h3>Available ports</h3>
+  <p class="muted">Highlighted on this stack: {{ available_ports|length }} unpatched (not shutdown, not faulty, not uplink). Choose a stack and switch to pick a numbered port. Grey cells are already patched.</p>
+  <form method="get" action="/offices/{{ office.slug }}" class="switch-pick" id="port-picker-form">
+    <input type="hidden" name="view" value="patching">
+    <input type="hidden" name="show_available" value="1">
+    <input type="hidden" name="stack" value="{{ active_stack_key }}">
+    {% if selected_fo %}<input type="hidden" name="fo" value="{{ selected_fo.code }}">{% endif %}
+    {% if selected %}<input type="hidden" name="port" value="{{ selected.id }}">{% endif %}
+    <label>Stack to patch to
+      <select name="pick_stack"
+              hx-get="/partials/offices/{{ office.slug }}/available"
+              hx-include="#port-picker-form"
+              hx-target="#available-highlight"
+              hx-push-url="false">
+        {% for st in patching_stacks %}
+        <option value="{{ st.name|office_slug }}" {% if picker_stack and st.name == picker_stack.name %}selected{% endif %}>
+          {{ st.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Switch
+      <select name="switch"
+              hx-get="/partials/offices/{{ office.slug }}/available"
+              hx-include="#port-picker-form"
+              hx-target="#available-highlight"
+              hx-push-url="false">
+        <option value="">Select a switch</option>
+        {% for sw in picker_switches %}
+        <option value="{{ sw.id }}" {% if highlight_switch and highlight_switch.id == sw.id %}selected{% endif %}>
+          {{ sw.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <noscript><button class="btn" type="submit">Show</button></noscript>
+  </form>
+
+  {% if highlight_switch %}
+  <p class="muted">{{ highlight_switch.name }} — patched ports are greyed out</p>
+  <div class="port-picker" aria-label="{{ highlight_switch.name }} ports">
+    <div class="picker-row">
+      {% for port in highlight_ports if port.if_index % 2 == 1 %}
+        {% include "partials/picker_cell.html" %}
+      {% endfor %}
+    </div>
+    <div class="picker-row">
+      {% for port in highlight_ports if port.if_index % 2 == 0 %}
+        {% include "partials/picker_cell.html" %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endif %}

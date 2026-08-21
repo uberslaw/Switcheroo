@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -66,6 +66,12 @@ class Switch(Base):
     name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     management_ip: Mapped[str] = mapped_column(String(64), default="")
     location: Mapped[str] = mapped_column(String(256), default="")
+    room: Mapped[str] = mapped_column(String(128), default="")
+    stack_name: Mapped[str] = mapped_column(String(128), default="")
+    stack_role: Mapped[str] = mapped_column(String(32), default="")
+    member_number: Mapped[int] = mapped_column(Integer, default=0)
+    rack_order: Mapped[int] = mapped_column(Integer, default=0)
+    chassis_model: Mapped[str] = mapped_column(String(32), default="9300")
     notes: Mapped[str] = mapped_column(Text, default="")
     username: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     password: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
@@ -79,6 +85,12 @@ class Switch(Base):
     ports: Mapped[list[Port]] = relationship(back_populates="switch", cascade="all, delete-orphan")
     vlans: Mapped[list[SwitchVlan]] = relationship(back_populates="switch", cascade="all, delete-orphan")
     permissions: Mapped[list[UserSwitchPermission]] = relationship(back_populates="switch")
+    patch_panels: Mapped[list["PatchPanel"]] = relationship(back_populates="switch")
+
+    @property
+    def is_9500(self) -> bool:
+        model = (self.chassis_model or "").lower()
+        return model in {"9500", "c9500"}
 
 
 class SwitchVlan(Base):
@@ -116,8 +128,10 @@ class Port(Base):
     last_poll_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     data_source: Mapped[str] = mapped_column(String(32), default=SOURCE_SEED)
     link_up_since: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    faulty: Mapped[bool] = mapped_column(default=False)
 
     switch: Mapped[Switch] = relationship(back_populates="ports")
+    patch: Mapped[Optional["Patch"]] = relationship(back_populates="port", uselist=False)
 
 
 class UserSwitchPermission(Base):
@@ -209,3 +223,87 @@ class TroubleshootingSession(Base):
     user: Mapped[User] = relationship()
     switch: Mapped[Switch] = relationship()
     port: Mapped[Port] = relationship()
+
+
+class FieldOutlet(Base):
+    __tablename__ = "field_outlets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    label: Mapped[str] = mapped_column(String(128), default="")
+    floor: Mapped[str] = mapped_column(String(32), default="")
+    room: Mapped[str] = mapped_column(String(128), default="")
+    faulty: Mapped[bool] = mapped_column(default=False)
+
+    patch: Mapped[Optional["Patch"]] = relationship(back_populates="field_outlet", uselist=False)
+
+
+class PatchPanel(Base):
+    __tablename__ = "patch_panels"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    room: Mapped[str] = mapped_column(String(128), default="")
+    location: Mapped[str] = mapped_column(String(256), default="")
+    port_count: Mapped[int] = mapped_column(Integer, default=24)
+    switch_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("switches.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    placement: Mapped[str] = mapped_column(String(16), default="")
+
+    switch: Mapped[Optional[Switch]] = relationship(back_populates="patch_panels")
+    ports: Mapped[list["PatchPanelPort"]] = relationship(
+        back_populates="panel", cascade="all, delete-orphan"
+    )
+
+
+class PatchPanelPort(Base):
+    __tablename__ = "patch_panel_ports"
+    __table_args__ = (UniqueConstraint("panel_id", "position", name="uq_panel_position"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    panel_id: Mapped[int] = mapped_column(ForeignKey("patch_panels.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    field_number: Mapped[str] = mapped_column(String(32), default="")
+    field_outlet_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("field_outlets.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    panel: Mapped[PatchPanel] = relationship(back_populates="ports")
+    field_outlet: Mapped[Optional[FieldOutlet]] = relationship()
+    patch: Mapped[Optional["Patch"]] = relationship(back_populates="panel_port", uselist=False)
+
+
+class Patch(Base):
+    """One field outlet to one switch port. Panel port is the jack on the patch panel graphic."""
+
+    __tablename__ = "patches"
+    __table_args__ = (
+        UniqueConstraint("field_outlet_id", name="uq_patch_fo"),
+        UniqueConstraint("port_id", name="uq_patch_switch_port"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    field_outlet_id: Mapped[int] = mapped_column(ForeignKey("field_outlets.id", ondelete="CASCADE"), index=True)
+    port_id: Mapped[int] = mapped_column(ForeignKey("ports.id", ondelete="CASCADE"), index=True)
+    panel_port_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("patch_panel_ports.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    field_outlet: Mapped[FieldOutlet] = relationship(back_populates="patch")
+    port: Mapped[Port] = relationship(back_populates="patch")
+    panel_port: Mapped[Optional[PatchPanelPort]] = relationship(back_populates="patch")
+
+
+class CablePath(Base):
+    """Horizontal runs stay unmeasured; patch cords to the adjacent RU are 0.20 m."""
+
+    __tablename__ = "cable_paths"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    from_kind: Mapped[str] = mapped_column(String(32), default="")
+    from_id: Mapped[int] = mapped_column(Integer, default=0)
+    to_kind: Mapped[str] = mapped_column(String(32), default="")
+    to_id: Mapped[int] = mapped_column(Integer, default=0)
+    length_m: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    path_note: Mapped[str] = mapped_column(String(256), default="")

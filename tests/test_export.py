@@ -46,7 +46,7 @@ def test_cs_can_download_permitted_switch_xlsx(client, seeded_db):
     assert wb.active.max_row == 49
 
 
-def test_cs_cannot_export_hidden_switch(client, seeded_db):
+def test_cs_cannot_export_hidden_switch(client, seeded_db, closed_access):
     add_cs_user(seeded_db, "cs-limited", "cs-limited", ["CS-BLD-A-AS01"])
     hidden = seeded_db.scalar(select(Switch).where(Switch.name == "CS-BLD-B-AS01"))
     client.post("/login", data={"username": "cs-limited", "password": "cs-limited"}, follow_redirects=False)
@@ -55,7 +55,7 @@ def test_cs_cannot_export_hidden_switch(client, seeded_db):
     assert response.headers["location"] == "/"
 
 
-def test_visible_export_is_permission_aware(client, seeded_db):
+def test_visible_export_is_permission_aware(client, seeded_db, closed_access):
     add_cs_user(seeded_db, "cs-limited", "cs-limited", ["CS-BLD-A-AS01"])
     client.post("/login", data={"username": "cs-limited", "password": "cs-limited"}, follow_redirects=False)
     response = client.get("/export.xlsx")

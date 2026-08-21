@@ -1,0 +1,10 @@
+{% set patched = patched_ids is defined and port.id in patched_ids %}
+{% if patched %}
+<span class="picker-cell picker-patched" title="{{ port.if_name|giface }} · patched">{{ port.if_index }}</span>
+{% else %}
+<a class="picker-cell {% if available_ids is defined and port.id in available_ids %}port-available{% endif %}"
+   href="/offices/{{ office.slug }}?view=patching&amp;stack={{ active_stack_key }}&amp;port={{ port.id }}&amp;show_available=1{% if selected_fo %}&amp;fo={{ selected_fo.code }}{% endif %}&amp;switch={{ highlight_switch.id }}&amp;pick_stack={{ picker_stack_key }}"
+   hx-get="/partials/offices/{{ office.slug }}/fo-pane?port={{ port.id }}&amp;stack={{ active_stack_key }}&amp;show_available=1{% if selected_fo %}&amp;fo={{ selected_fo.code }}{% endif %}"
+   hx-target="#fo-pane-slot"
+   title="{{ port.if_name|giface }}">{{ port.if_index }}</a>
+{% endif %}

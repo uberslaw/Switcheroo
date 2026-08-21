@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Switches · Switcheroo{% endblock %}
+{% block main_class %}wrap{% if has_stacked %} wrap-wide{% endif %}{% endblock %}
 {% block body %}
 <div class="page-head">
   <div>
@@ -7,7 +8,7 @@
     <p class="muted">Up/down is polled every {{ interval }}s (targeted ifOperStatus only). VLAN, MAC, IP, and ISE refresh daily or on demand.</p>
   </div>
   <div class="head-actions">
-    {% if cards %}
+    {% if card_by_id %}
     <a class="btn" href="/export.xlsx">Export XLSX</a>
     {% endif %}
     {% if user.role == 'networks' and pending %}
@@ -16,36 +17,40 @@
   </div>
 </div>
 
-{% if not cards %}
+{% if not offices %}
 <div class="empty">
   <p>No switches are visible to your account.</p>
-  <p class="muted">Networks must grant Client Services access under Access. If you expected inventory, confirm seed ran and you are not a limited CS user.</p>
+  <p class="muted">If you expected inventory, confirm seed ran (restart the Switcheroo service) and that SWITCHEROO_OPEN_ACCESS is true, or that Networks granted this CS account switches under Access.</p>
 </div>
 {% else %}
-<div class="card-grid">
-  {% for card in cards %}
-  <a class="switch-card" href="/switches/{{ card.switch.id }}">
-    <div class="switch-card-top">
-      <h2>{{ card.switch.name }}</h2>
-      <span class="mono dim">{{ card.switch.management_ip }}</span>
+{% for office in offices %}
+<section class="office-block" id="office-{{ office.slug }}">
+  <div class="office-head">
+    <div>
+      <h2>{{ office.name }}</h2>
+      {% if office.stacked %}
+      <p class="muted">Floor stacks and the main comms room as racks — click a chassis for the full faceplate.</p>
+      {% endif %}
     </div>
-    <p class="muted">{{ card.switch.location or 'No location' }}</p>
-    <div class="stat-row">
-      <span class="stat up"><i></i>{{ card.counts.up }} up</span>
-      <span class="stat down"><i></i>{{ card.counts.down }} down</span>
-      <span class="stat shut"><i></i>{{ card.counts.shutdown }} shutdown</span>
-      <span class="muted">{{ card.counts.total }} ports</span>
+    {% if office.stacked %}
+    <div class="head-actions">
+    <a class="btn" href="/offices/{{ office.slug }}">Open {{ office.name }} layout</a>
+    <a class="btn" href="/offices/{{ office.slug }}?view=patching">Patching</a>
     </div>
-    <dl class="meta">
-      <div><dt>Last status poll</dt><dd>{{ card.switch.last_status_poll_at|ago }}</dd></div>
-      <div><dt>Next status poll</dt><dd>{% if card.switch.next_status_poll_at %}{{ card.switch.next_status_poll_at|dt }}{% else %}on scheduler start{% endif %}</dd></div>
-      <div><dt>Last daily detail</dt><dd>{{ card.switch.last_daily_poll_at|ago }}</dd></div>
-    </dl>
-    {% if card.switch.last_poll_error %}
-    <p class="poll-error">{{ card.switch.last_poll_error }}</p>
     {% endif %}
-  </a>
-  {% endfor %}
-</div>
+  </div>
+  {% if office.stacked %}
+    {% include "partials/office_layout.html" %}
+  {% endif %}
+  {% if office.unstacked %}
+  <div class="card-grid">
+    {% for switch in office.unstacked %}
+      {% set card = card_by_id[switch.id] %}
+      {% include "partials/switch_card.html" %}
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endfor %}
 {% endif %}
 {% endblock %}

@@ -1,9 +1,9 @@
-<div class="chassis" aria-label="Catalyst 9300 faceplate">
+<div class="chassis{% if switch.is_9500 %} chassis-c9500{% endif %}" aria-label="Catalyst {% if switch.is_9500 %}9500{% else %}9300{% endif %} faceplate">
   <div class="chassis-rail"></div>
   <div class="bezel">
     <div class="sys-block">
       <div class="sys-brand">
-        <div class="sys-model">C9300-48</div>
+        <div class="sys-model">{% if switch.is_9500 %}C9500{% else %}C9300-48{% endif %}</div>
         <div class="sys-name" title="{{ switch.name }}">{{ switch.name }}</div>
       </div>
       <div class="sys-leds" title="Chassis status LEDs (decorative)">
@@ -25,12 +25,21 @@
           {% for p in (top, bot) %}
           {% if p %}
           {% set v = views[p.id] %}
+          {% set patched = patched_ids is defined and p.id in patched_ids %}
+          {% set open = available_ids is defined and p.id in available_ids %}
           <button type="button"
-                  class="rj45 led-{{ v.led }} {% if selected and selected.id == p.id %}selected{% endif %}"
+                  class="rj45 led-{{ v.led }} {% if selected and selected.id == p.id %}selected{% endif %} {% if open %}port-available{% endif %} {% if patched %}port-patched{% endif %}"
                   title="{{ p.if_name|giface }} · {{ p.purpose|purpose }}{% if p.friendly_label %} ({{ p.friendly_label }}){% endif %} · {{ p.oper_status }}{% if p.admin_status == 'down' %} / shutdown{% endif %}"
+                  {% if patching_mode is defined and patching_mode %}
+                  hx-get="/partials/offices/{{ office.slug }}/fo-pane?port={{ p.id }}&amp;stack={{ active_stack_key }}{% if fo_query %}&amp;fo={{ fo_query }}{% endif %}{% if show_available %}&amp;show_available=1{% endif %}"
+                  hx-target="#fo-pane-slot"
+                  hx-swap="innerHTML"
+                  hx-push-url="/offices/{{ office.slug }}?view=patching&amp;stack={{ active_stack_key }}&amp;port={{ p.id }}{% if fo_query %}&amp;fo={{ fo_query }}{% endif %}{% if show_available %}&amp;show_available=1{% endif %}"
+                  {% else %}
                   hx-get="/partials/switches/{{ switch.id }}/workspace?port={{ p.id }}"
                   hx-target="#switch-workspace"
-                  hx-swap="outerHTML">
+                  hx-swap="outerHTML"
+                  {% endif %}>
             <span class="jack-led"></span>
             <span class="jack">
               <span class="clip"></span>
@@ -48,18 +57,18 @@
       {% endfor %}
     </div>
 
-    <div class="sfp-bay" title="Uplink / network-module cages (placeholder — seed is 48 copper)">
-      <div class="sfp-label">NM</div>
-      {% for n in range(1, 5) %}
+    <div class="sfp-bay{% if switch.is_9500 %} sfp-bay-wide{% endif %}" title="{% if switch.is_9500 %}Uplink / QSFP cages (9500 stand-in — seed is 48 copper){% else %}Uplink / network-module cages (placeholder — seed is 48 copper){% endif %}">
+      <div class="sfp-label">{% if switch.is_9500 %}QSFP{% else %}NM{% endif %}</div>
+      {% for n in range(1, 9 if switch.is_9500 else 5) %}
       <div class="sfp-cage">
-        <span class="sfp-slot"></span>
+        <span class="sfp-slot{% if switch.is_9500 %} sfp-slot-wide{% endif %}"></span>
         <span class="sfp-num">U{{ n }}</span>
       </div>
       {% endfor %}
     </div>
   </div>
   <div class="chassis-foot">
-    <span>48× 1G RJ45 · odd top / even bottom</span>
+    <span>{% if switch.is_9500 %}48× 1G RJ45 stand-in · Catalyst 9500{% else %}48× 1G RJ45 · odd top / even bottom{% endif %}</span>
     <span class="mono">{{ switch.management_ip }}</span>
   </div>
 </div>

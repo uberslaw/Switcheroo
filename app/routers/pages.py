@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from collections import defaultdict
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, select
@@ -22,6 +24,23 @@ from app.models import (
 )
 from app.services.cooldown import remaining_seconds
 from app.services.export import build_ports_workbook
+from app.services.office import build_office_views, find_office
+from app.services.patching import (
+    available_ports_on_switches,
+    find_outlet,
+    find_patching_stack,
+    jack_outlets,
+    outlet_with_patch,
+    panels_for_location,
+    patch_for_port,
+    patched_switch_port_ids,
+    patching_bays,
+    patching_stacks,
+    search_outlets,
+    stack_for_outlet,
+    stack_key,
+)
+from app.services.request_service import pending_vlan_request
 from app.services.switch_service import (
     PermissionDenied,
     TroubleshootConflict,
@@ -31,23 +50,71 @@ from app.services.switch_service import (
     stop_troubleshooting,
     visible_switches,
 )
-from app.services.request_service import pending_vlan_request
 from app.services.uptime import faceplate_groups, port_led, problem_reason
 from app.templating import flash, render
 
 router = APIRouter()
 
 
+def _optional_int(value: str | int | None) -> int | None:
+    if value is None or value is False:
+        return None
+    if isinstance(value, int):
+        return value
+    raw = str(value).strip()
+    if not raw.isdigit():
+        return None
+    return int(raw)
+
+
 def _current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return require_user(db, request)
 
 
-def _switch_counts(db: Session, switch: Switch) -> dict:
-    ports = list(db.scalars(select(Port).where(Port.switch_id == switch.id)).all())
-    up = sum(1 for p in ports if p.oper_status == "up")
-    down = sum(1 for p in ports if p.oper_status != "up")
-    shut = sum(1 for p in ports if p.admin_status == "down")
-    return {"total": len(ports), "up": up, "down": down, "shutdown": shut}
+def _office_members(office) -> list[Switch]:
+    members: list[Switch] = list(office.unstacked)
+    for stack in office.floor_stacks:
+        members.extend(stack.members)
+    if office.mcr is not None:
+        for stack in office.mcr.stacks:
+            members.extend(stack.members)
+    for room in office.other_rooms:
+        for stack in room.stacks:
+            members.extend(stack.members)
+    seen: set[int] = set()
+    unique: list[Switch] = []
+    for switch in members:
+        if switch.id in seen:
+            continue
+        seen.add(switch.id)
+        unique.append(switch)
+    return unique
+
+
+def _dashboard_cards(db: Session, switches: list[Switch]) -> dict[int, dict]:
+    ids = [s.id for s in switches]
+    ports_by_switch: dict[int, list[Port]] = defaultdict(list)
+    if ids:
+        ports = list(
+            db.scalars(select(Port).where(Port.switch_id.in_(ids)).order_by(Port.if_index)).all()
+        )
+        for port in ports:
+            ports_by_switch[port.switch_id].append(port)
+    cards: dict[int, dict] = {}
+    for switch in switches:
+        ports = ports_by_switch.get(switch.id, [])
+        up = sum(1 for p in ports if p.oper_status == "up")
+        down = sum(1 for p in ports if p.oper_status != "up")
+        shut = sum(1 for p in ports if p.admin_status == "down")
+        leds = [port_led(p) for p in ports]
+        while len(leds) < 48:
+            leds.append("dark-green")
+        cards[switch.id] = {
+            "switch": switch,
+            "counts": {"total": len(ports), "up": up, "down": down, "shutdown": shut},
+            "leds": leds[:48],
+        }
+    return cards
 
 
 def _port_view(port: Port) -> dict:
@@ -118,10 +185,8 @@ def logout(request: Request):
 @router.get("/")
 def dashboard(request: Request, db: Session = Depends(get_db), user: User = Depends(_current_user)):
     switches = visible_switches(db, user)
-    cards = []
-    settings = get_settings()
-    for switch in switches:
-        cards.append({"switch": switch, "counts": _switch_counts(db, switch)})
+    card_by_id = _dashboard_cards(db, switches)
+    offices = build_office_views(switches)
     pending = 0
     if user.role == ROLE_NETWORKS:
         pending = db.scalar(select(func.count(ChangeRequest.id)).where(ChangeRequest.status == "pending")) or 0
@@ -130,11 +195,272 @@ def dashboard(request: Request, db: Session = Depends(get_db), user: User = Depe
         request,
         "dashboard.html",
         user=user,
-        cards=cards,
+        offices=offices,
+        card_by_id=card_by_id,
+        has_stacked=any(office.stacked for office in offices),
         pending=pending,
         session=session,
-        interval=settings.status_poll_interval,
+        interval=get_settings().status_poll_interval,
+        patching_view=False,
     )
+
+
+@router.get("/offices/{slug}")
+def office_page(
+    slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_current_user),
+    view: str | None = None,
+    fo: str | None = None,
+    q: str | None = None,
+    switch: str | None = None,
+    show_available: str | None = None,
+    stack: str | None = None,
+    port: str | None = None,
+    pick_stack: str | None = None,
+):
+    switches = visible_switches(db, user)
+    offices = build_office_views(switches)
+    office = find_office(offices, slug)
+    if office is None:
+        flash(request, "That office is not visible to your account.", "error")
+        return RedirectResponse("/", status_code=303)
+    members = _office_members(office)
+    card_by_id = _dashboard_cards(db, members)
+    pending = 0
+    if user.role == ROLE_NETWORKS:
+        pending = db.scalar(select(func.count(ChangeRequest.id)).where(ChangeRequest.status == "pending")) or 0
+    session = active_session_for_user(db, user.id)
+    patching_view = (view or "").lower() == "patching"
+    switch_id = _optional_int(switch)
+    ctx = {
+        "office": office,
+        "card_by_id": card_by_id,
+        "pending": pending,
+        "session": session,
+        "interval": get_settings().status_poll_interval,
+        "patching_view": patching_view,
+    }
+    if patching_view:
+        ctx.update(
+            _patching_office_ctx(
+                db,
+                office,
+                members,
+                fo=fo,
+                q=q,
+                switch_id=switch_id,
+                show_available=bool(_optional_int(show_available)) or bool(switch_id),
+                stack_name=stack,
+                port_id=_optional_int(port),
+                pick_stack=pick_stack,
+            )
+        )
+    return render(request, "office.html", user=user, **ctx)
+
+
+def _office_or_none(db: Session, user: User, slug: str):
+    switches = visible_switches(db, user)
+    offices = build_office_views(switches)
+    office = find_office(offices, slug)
+    if office is None:
+        return None, []
+    return office, _office_members(office)
+
+
+@router.get("/partials/offices/{slug}/fo-pane")
+def fo_pane_partial(
+    slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_current_user),
+    fo: str | None = None,
+    q: str | None = None,
+    switch: str | None = None,
+    show_available: str | None = None,
+    stack: str | None = None,
+    port: str | None = None,
+    pick_stack: str | None = None,
+):
+    office, members = _office_or_none(db, user, slug)
+    if office is None:
+        return render(request, "partials/denied.html", user=user)
+    ctx = _patching_office_ctx(
+        db,
+        office,
+        members,
+        fo=fo,
+        q=q,
+        switch_id=_optional_int(switch),
+        show_available=bool(_optional_int(show_available)) or bool(switch),
+        stack_name=stack,
+        port_id=_optional_int(port),
+        pick_stack=pick_stack,
+    )
+    ctx["office"] = office
+    return render(request, "partials/fo_pane.html", user=user, **ctx)
+
+
+@router.get("/partials/offices/{slug}/fo-suggest")
+def fo_suggest_partial(
+    slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_current_user),
+    q: str | None = None,
+    fo: str | None = None,
+):
+    office, _members = _office_or_none(db, user, slug)
+    if office is None:
+        return render(request, "partials/denied.html", user=user)
+    hits = search_outlets(db, office.name, q or fo or "")
+    return render(
+        request,
+        "partials/fo_suggest.html",
+        user=user,
+        office=office,
+        hits=hits,
+        fo_query=q or fo or "",
+    )
+
+
+@router.get("/partials/offices/{slug}/available")
+def available_partial(
+    slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_current_user),
+    fo: str | None = None,
+    switch: str | None = None,
+    stack: str | None = None,
+    pick_stack: str | None = None,
+    show_available: str | None = None,
+    port: str | None = None,
+):
+    office, members = _office_or_none(db, user, slug)
+    if office is None:
+        return render(request, "partials/denied.html", user=user)
+    ctx = _patching_office_ctx(
+        db,
+        office,
+        members,
+        fo=fo,
+        q=None,
+        switch_id=_optional_int(switch),
+        show_available=True,
+        stack_name=stack or pick_stack,
+        port_id=_optional_int(port),
+        pick_stack=pick_stack or stack,
+    )
+    ctx["office"] = office
+    ctx["card_by_id"] = _dashboard_cards(db, members)
+    return render(request, "partials/available_ports.html", user=user, **ctx)
+
+
+def _patching_office_ctx(
+    db: Session,
+    office,
+    members: list[Switch],
+    *,
+    fo: str | None,
+    q: str | None,
+    switch_id: int | None,
+    show_available: bool,
+    stack_name: str | None = None,
+    port_id: int | None = None,
+    pick_stack: str | None = None,
+) -> dict:
+    panels = panels_for_location(db, office.name)
+    query = (fo or q or "").strip()
+    selected_fo = find_outlet(db, query) if query else None
+    if selected_fo is not None:
+        selected_fo = outlet_with_patch(db, selected_fo.id) or selected_fo
+
+    switch_port: Port | None = None
+    fo_patch = selected_fo.patch if selected_fo is not None else None
+    if port_id:
+        switch_port = db.get(Port, port_id)
+        if switch_port is not None:
+            port_patch = patch_for_port(db, switch_port.id)
+            if port_patch is not None:
+                fo_patch = port_patch
+                selected_fo = outlet_with_patch(db, port_patch.field_outlet_id) or port_patch.field_outlet
+    elif fo_patch is not None:
+        switch_port = fo_patch.port
+
+    selected_view = None
+    if switch_port is not None:
+        selected_view = _port_view(switch_port)
+        selected_view["pending_vlan"] = pending_vlan_request(db, switch_port.id)
+
+    inferred = stack_for_outlet(office, selected_fo, panels)
+    if switch_port is not None and switch_port.switch is not None:
+        inferred = find_patching_stack(office, switch_port.switch.stack_name) or inferred
+    active_stack = find_patching_stack(office, stack_name) if stack_name else inferred
+    picker_stack = find_patching_stack(office, pick_stack) if pick_stack else active_stack
+
+    stacks = patching_stacks(office)
+    all_bays = patching_bays(office, panels)
+    active_key = stack_key(active_stack) if active_stack is not None else ""
+    patch_bays = [bay for bay in all_bays if stack_key(bay["stack"]) == active_key] or all_bays[:1]
+
+    patched_ids = patched_switch_port_ids(db)
+    available: list[Port] = []
+    available_ids: set[int] = set()
+    if show_available and active_stack is not None:
+        available = available_ports_on_switches(db, active_stack.members)
+        available_ids = {p.id for p in available}
+
+    highlight_switch = None
+    highlight_ports: list[Port] = []
+    if switch_id and picker_stack is not None:
+        highlight_switch = next((s for s in picker_stack.members if s.id == switch_id), None)
+    if highlight_switch is not None:
+        highlight_ports = list(
+            db.scalars(
+                select(Port).where(Port.switch_id == highlight_switch.id).order_by(Port.if_index)
+            ).all()
+        )
+
+    for bay in patch_bays:
+        for row in bay["rows"]:
+            sw = row["switch"]
+            ports = list(
+                db.scalars(select(Port).where(Port.switch_id == sw.id).order_by(Port.if_index)).all()
+            )
+            row["groups"] = faceplate_groups(ports)
+            row["views"] = {p.id: _port_view(p) for p in ports}
+            row["selected"] = switch_port if switch_port is not None and switch_port.switch_id == sw.id else None
+
+    picker_switches = list(picker_stack.members) if picker_stack is not None else []
+
+    return {
+        "panels": panels,
+        "patch_bays": patch_bays,
+        "patching_stacks": stacks,
+        "active_stack": active_stack,
+        "active_stack_key": active_key,
+        "picker_stack": picker_stack,
+        "picker_stack_key": stack_key(picker_stack) if picker_stack is not None else "",
+        "picker_switches": picker_switches,
+        "jack_fos": jack_outlets(db, panels),
+        "fo_query": query,
+        "selected_fo": selected_fo,
+        "fo_patch": fo_patch,
+        "fo_switch_port": switch_port,
+        "selected": switch_port,
+        "selected_view": selected_view,
+        "switch": switch_port.switch if switch_port is not None else None,
+        "office_switches": members,
+        "show_available": show_available,
+        "highlight_switch": highlight_switch,
+        "highlight_ports": highlight_ports,
+        "available_ports": available,
+        "available_ids": available_ids,
+        "patched_ids": patched_ids,
+        "patching_mode": True,
+    }
 
 
 @router.get("/switches/{switch_id}")

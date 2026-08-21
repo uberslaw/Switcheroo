@@ -863,6 +863,10 @@ function Start-SwitcherooTarget {
         $svc = Get-SwitcherooServiceInfo -Name $script:ServiceName -Force
         if ($svc.Exists) {
             if (-not (Assert-CanControlService)) { return }
+            if ($svc.State -and $svc.State -ne 'Stopped' -and $svc.State -ne 'StartPending' -and $svc.State -ne 'Start Pending') {
+                Write-LcLog "Service $($script:ServiceName) is $($svc.State) but health failed — treating as hung wrapper; forcing stop then start."
+                Stop-ProductWindowsService -Name $script:ServiceName
+            }
             Write-LcLog "Starting Windows service $($script:ServiceName)"
             $script:StartedAt = Get-Date
             Start-Service -Name $script:ServiceName -ErrorAction Stop
@@ -873,14 +877,70 @@ function Start-SwitcherooTarget {
         }
     }
     catch {
-        Write-LcLog $_.Exception.Message -Level "ERROR"
-        if ($_.Exception.Message -match "Access is denied|Cannot open|privilege") {
+        Write-LcLog (Format-LcException $_) -Level "ERROR"
+        if ((Format-LcException $_) -match "Access is denied|Cannot open|privilege|Win32 5") {
             Write-LcLog "Run as administrator to control the service" -Level "ERROR"
         }
     }
     finally {
         $script:Busy = $false
         [void](Start-StatusProbeAsync -Force)
+    }
+}
+
+function Format-LcException {
+    param($ErrorRecord)
+    $parts = New-Object System.Collections.Generic.List[string]
+    $ex = if ($ErrorRecord -is [System.Management.Automation.ErrorRecord]) { $ErrorRecord.Exception } else { $ErrorRecord }
+    while ($ex) {
+        if ($ex -is [System.ComponentModel.Win32Exception]) {
+            [void]$parts.Add("$($ex.GetType().Name) (Win32 $($ex.NativeErrorCode)): $($ex.Message)")
+        }
+        else {
+            [void]$parts.Add("$($ex.GetType().Name): $($ex.Message)")
+        }
+        $ex = $ex.InnerException
+    }
+    if ($parts.Count -eq 0) { return [string]$ErrorRecord }
+    return ($parts -join " — ")
+}
+
+function Stop-ProductWindowsService {
+    param([string]$Name, [int]$TimeoutSec = 12)
+    $svc = Get-Service -Name $Name -ErrorAction Stop
+    if ($svc.Status -eq 'Stopped') { return }
+    Write-LcLog "Stopping Windows service $Name (timeout ${TimeoutSec}s)"
+    try {
+        if ($svc.Status -ne 'StopPending') {
+            $svc.Stop()
+        }
+        $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds($TimeoutSec))
+    }
+    catch {
+        Write-LcLog (Format-LcException $_) -Level "ERROR"
+    }
+    $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    if (-not $svc -or $svc.Status -eq 'Stopped') { return }
+
+    $winsw = Join-Path $script:RepoRoot "scripts\winsw\Switcheroo.exe"
+    if (Test-Path -LiteralPath $winsw) {
+        Write-LcLog "Service still $($svc.Status); trying WinSW stop ($winsw stop)"
+        try {
+            & $winsw stop
+        }
+        catch {
+            Write-LcLog (Format-LcException $_) -Level "WARN"
+        }
+        Start-Sleep -Seconds 2
+        $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
+        if (-not $svc -or $svc.Status -eq 'Stopped') { return }
+    }
+
+    $cim = Get-CimInstance -ClassName Win32_Service -Filter ("Name='" + ($Name.Replace("'", "''")) + "'") -ErrorAction SilentlyContinue
+    $svcPid = if ($cim) { [int]$cim.ProcessId } else { 0 }
+    if ($svcPid -gt 0) {
+        Write-LcLog "Service still $($svc.Status); taskkill PID $svcPid (WinSW wrapper / service host)"
+        Start-Process -FilePath "taskkill.exe" -ArgumentList "/F", "/PID", "$svcPid", "/T" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
     }
 }
 
@@ -892,9 +952,7 @@ function Stop-SwitcherooTarget {
         $svc = Get-SwitcherooServiceInfo -Name $script:ServiceName -Force
         if ($svc.Exists) {
             if (-not (Assert-CanControlService)) { return }
-            Write-LcLog "Stopping Windows service $($script:ServiceName)"
-            Stop-Service -Name $script:ServiceName -Force -ErrorAction Stop
-            Write-LcLog "Stop-Service issued"
+            Stop-ProductWindowsService -Name $script:ServiceName
             $script:StartedAt = $null
         }
         else {
@@ -902,8 +960,8 @@ function Stop-SwitcherooTarget {
         }
     }
     catch {
-        Write-LcLog $_.Exception.Message -Level "ERROR"
-        if ($_.Exception.Message -match "Access is denied|Cannot open|privilege") {
+        Write-LcLog (Format-LcException $_) -Level "ERROR"
+        if ((Format-LcException $_) -match "Access is denied|Cannot open|privilege|Win32 5") {
             Write-LcLog "Run as administrator to control the service" -Level "ERROR"
         }
     }
@@ -921,12 +979,13 @@ function Restart-SwitcherooTarget {
         $script:Busy = $true
         try {
             Write-LcLog "Restarting Windows service $($script:ServiceName)"
-            Restart-Service -Name $script:ServiceName -Force -ErrorAction Stop
+            Stop-ProductWindowsService -Name $script:ServiceName
+            Start-Service -Name $script:ServiceName -ErrorAction Stop
             $script:StartedAt = Get-Date
-            Write-LcLog "Restart-Service issued"
+            Write-LcLog "Restart issued"
         }
         catch {
-            Write-LcLog $_.Exception.Message -Level "ERROR"
+            Write-LcLog (Format-LcException $_) -Level "ERROR"
         }
         finally {
             $script:Busy = $false

@@ -23,7 +23,7 @@ Lab-only defaults that must change before any shared/internal deploy:
 - Bind address `127.0.0.1` (set `SWITCHEROO_HOST=0.0.0.0` only on a firewalled internal host)
 - `SWITCHEROO_SECRET_KEY=change-me-lab-only-not-for-production`
 - Users `networks` / `networks` and `cs` / `cs`
-- Simulated mgmt IPs `192.0.2.10` and `192.0.2.11` (RFC 5737 TEST-NET-1, not live devices)
+- Simulated mgmt IPs `192.0.2.10` / `192.0.2.11` (lab buildings) and `192.0.2.21`–`192.0.2.62` (Brisbane template). RFC 5737 TEST-NET-1, not live devices.
 
 ## Windows first run (service + Launch Control)
 
@@ -82,7 +82,7 @@ Open http://127.0.0.1:8080
 | Username | Password | Role |
 | --- | --- | --- |
 | `networks` | `networks` | Inventory, port purposes, CS permissions, approval queue |
-| `cs` | `cs` | Permitted switches, request VLAN/bounce/bring-online, on-demand refresh, troubleshooting |
+| `cs` | `cs` | All switches while `SWITCHEROO_OPEN_ACCESS=true` (lab default); otherwise only granted switches |
 
 These are **lab defaults**. Create real users under Access before sharing the site.
 
@@ -115,7 +115,7 @@ A failed poll is recorded on the switch/port and **does not crash** the website.
 
 ### Faceplate, LEDs, and connected uptime
 
-The switch page is a **Catalyst 9300-style faceplate** (48 RJ45, odd-over-even, four groups of 12, SFP/NM cages on the right). Click a port to fill the right-hand detail pane.
+The switch page is a **Catalyst 9300-style faceplate** (48 RJ45, odd-over-even, four groups of 12, SFP/NM cages on the right). Click a port to fill the right-hand detail pane. Brisbane **core** members use a distinct **Catalyst 9500-looking** chassis (wider QSFP uplink bay) still with 48 copper ports.
 
 Port LED legend:
 
@@ -132,11 +132,43 @@ Port LED legend:
 - Per switch: `/switches/{id}/export.xlsx` (also the **Export XLSX** button on the faceplate page).
 - All switches the user can see: `/export.xlsx` (dashboard and Networks inventory).
 
-Workbook columns: switch, port, purpose, label, status, admin, VLAN, VLAN name, MAC, IP, ISE, connected uptime, last status poll, last detail poll. CS only receives switches they are permitted to see. Requires `openpyxl` (pinned in `requirements.txt`).
+Workbook columns: switch, port, purpose, label, status, admin, VLAN, VLAN name, MAC, IP, ISE, connected uptime, last status poll, last detail poll. CS only receives switches they are permitted to see unless `SWITCHEROO_OPEN_ACCESS=true` (lab default: everyone sees every switch). Requires `openpyxl` (pinned in `requirements.txt`).
+
+## Brisbane office template
+
+Seed creates a 20-switch Brisbane campus (plus the two original lab boxes). `Switch.location` is **Brisbane**, so CS office auto-approve and the Requests office filter use that name. Networks can rename stacks/members on **Inventory**. Seed **upserts** by switch name: it still runs when `data\switcheroo.db` already exists, fills missing Brisbane rows and layout fields, and does not duplicate. The CS grant table is still populated; while **`SWITCHEROO_OPEN_ACCESS=true`** (default in `.env.example`) every signed-in user sees every switch — set it `false` later to enforce grants.
+
+After seed, **restart the Switcheroo Windows service** so the running process hydrates the simulator (`Restart-Service Switcheroo` from an elevated prompt). Seed also runs at process start. If the service cannot be restarted from this session, seed the live file with `python -c` against `data\switcheroo.db` then restart so `/` is not empty.
+
+| What to open | URL |
+| --- | --- |
+| Home (Brisbane racks + lab cards) | http://127.0.0.1:8080/ |
+| Brisbane office layout | http://127.0.0.1:8080/offices/brisbane |
+| Example floor member faceplate | home → **BNE-L27-FS-01** (or Inventory) |
+| Example aux (top of aux rack is #3) | **BNE-L27-AUX-03** |
+| Example 9500 core | **BNE-L27-CORE-01** |
+| Auto-approve office **Brisbane** | http://127.0.0.1:8080/admin/policies |
+
+**How it looks**
+
+- **Home / Brisbane page:** not a flat list of 20 cards. **Floor stacks** are three vertical racks (L27 = 7, L26 = 5, L21 = 3), member **#1 at the top**.
+- **Level 27 Main Comms Room:** three columns — L27 floor stack (those 7 live in the MCR), aux stack, core 9500 stack.
+- **Aux physical order** (top → bottom): **#3, #1, #2** (`BNE-L27-AUX-03`, `BNE-L27-AUX-01`, `BNE-L27-AUX-02`). `rack_order` stores that, so the UI does not sort 1-2-3.
+- **L26 / L21** floor stacks are their own IDFs (not inside the MCR). Click a mini chassis for the existing full faceplate.
+
+**Naming (Networks can rename)**
+
+| Role | Names | Room |
+| --- | --- | --- |
+| L27 floor stack | `BNE-L27-FS-01` … `BNE-L27-FS-07` | Level 27 Main Comms Room |
+| L26 floor stack | `BNE-L26-FS-01` … `BNE-L26-FS-05` | Level 26 IDF |
+| L21 floor stack | `BNE-L21-FS-01` … `BNE-L21-FS-03` | Level 21 IDF |
+| L27 aux | `BNE-L27-AUX-03`, `BNE-L27-AUX-01`, `BNE-L27-AUX-02` | Level 27 Main Comms Room |
+| L27 core 9500 | `BNE-L27-CORE-01`, `BNE-L27-CORE-02` | Level 27 Main Comms Room |
 
 ## Drivers
 
-1. **Simulator (default)** — two seeded 48-port fake 9300s (`CS-BLD-A-AS01`, `CS-BLD-B-AS01`) with mixed purposes, some down, some shutdown, MAC/IP/ISE, named VLANs, and lab connected-uptime stamps. Seed is idempotent.
+1. **Simulator (default)** — seeded 48-port fake switches: two lab boxes (`CS-BLD-A-AS01`, `CS-BLD-B-AS01`) plus the **Brisbane office template** (20 switches, names below). Mixed purposes, some down, some shutdown, MAC/IP/ISE, named VLANs, and lab connected-uptime stamps. Seed is idempotent. Driver stays `simulator` unless you override a row.
 2. **CiscoIOSXE** — RESTCONF structured reads/writes; Netmiko SSH fallback for bounce / shutdown / VLAN; SNMP optional for lightweight ifOperStatus. **No connection is opened** unless the switch row has management IP + username + password. Missing secrets stay on the simulator.
 
 `SWITCHEROO_DRIVER=cisco_iosxe` is global; a per-switch override exists on the inventory form.

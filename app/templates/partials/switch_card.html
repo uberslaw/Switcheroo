@@ -1,0 +1,21 @@
+<a class="switch-card" href="/switches/{{ card.switch.id }}">
+  <div class="switch-card-top">
+    <h2>{{ card.switch.name }}</h2>
+    <span class="mono dim">{{ card.switch.management_ip }}</span>
+  </div>
+  <p class="muted">{{ card.switch.location or 'No location' }}</p>
+  <div class="stat-row">
+    <span class="stat up"><i></i>{{ card.counts.up }} up</span>
+    <span class="stat down"><i></i>{{ card.counts.down }} down</span>
+    <span class="stat shut"><i></i>{{ card.counts.shutdown }} shutdown</span>
+    <span class="muted">{{ card.counts.total }} ports</span>
+  </div>
+  <dl class="meta">
+    <div><dt>Last status poll</dt><dd>{{ card.switch.last_status_poll_at|ago }}</dd></div>
+    <div><dt>Next status poll</dt><dd>{% if card.switch.next_status_poll_at %}{{ card.switch.next_status_poll_at|dt }}{% else %}on scheduler start{% endif %}</dd></div>
+    <div><dt>Last daily detail</dt><dd>{{ card.switch.last_daily_poll_at|ago }}</dd></div>
+  </dl>
+  {% if card.switch.last_poll_error %}
+  <p class="poll-error">{{ card.switch.last_poll_error }}</p>
+  {% endif %}
+</a>

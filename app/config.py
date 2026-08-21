@@ -73,6 +73,7 @@ class Settings:
     cisco_connect_timeout: int
     log_level: str
     diagnostics: bool
+    open_access: bool
 
     @property
     def servicenow_live(self) -> bool:
@@ -158,4 +159,7 @@ def get_settings() -> Settings:
         cisco_connect_timeout=_as_int(os.getenv("CISCO_CONNECT_TIMEOUT"), 10),
         log_level=(os.getenv("SWITCHEROO_LOG_LEVEL") or "INFO").strip().upper() or "INFO",
         diagnostics=_as_bool(os.getenv("SWITCHEROO_DIAGNOSTICS"), False),
+        # Lab default: every signed-in user sees every switch. Set false to
+        # enforce the CS grant table (user_switch_permissions) again.
+        open_access=_as_bool(os.getenv("SWITCHEROO_OPEN_ACCESS"), True),
     )

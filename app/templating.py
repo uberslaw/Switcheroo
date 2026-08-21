@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
 from app.models import utcnow
+from app.services.office import office_slug
 from app.services.uptime import format_connected_for, short_if_name
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
@@ -45,6 +46,7 @@ templates.env.filters["ago"] = _ago
 templates.env.filters["purpose"] = _purpose_label
 templates.env.filters["connected"] = format_connected_for
 templates.env.filters["giface"] = short_if_name
+templates.env.filters["office_slug"] = office_slug
 
 
 def render(request: Request, name: str, status_code: int = 200, **context):

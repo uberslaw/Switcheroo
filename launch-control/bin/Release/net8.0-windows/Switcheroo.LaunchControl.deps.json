@@ -8,7 +8,7 @@
     ".NETCoreApp,Version=v8.0": {
       "Switcheroo.LaunchControl/1.0.0": {
         "dependencies": {
-          "LaunchControl.Standard": "1.2.2"
+          "LaunchControl.Standard": "1.2.4"
         },
         "runtime": {
           "Switcheroo.LaunchControl.dll": {}
@@ -65,15 +65,15 @@
           }
         }
       },
-      "LaunchControl.Standard/1.2.2": {
+      "LaunchControl.Standard/1.2.4": {
         "dependencies": {
           "System.Management": "8.0.0",
           "System.ServiceProcess.ServiceController": "8.0.1"
         },
         "runtime": {
           "LaunchControl.Standard.dll": {
-            "assemblyVersion": "1.2.2.0",
-            "fileVersion": "1.2.2.0"
+            "assemblyVersion": "1.2.4.0",
+            "fileVersion": "1.2.4.0"
           }
         }
       }
@@ -106,7 +106,7 @@
       "path": "system.serviceprocess.servicecontroller/8.0.1",
       "hashPath": "system.serviceprocess.servicecontroller.8.0.1.nupkg.sha512"
     },
-    "LaunchControl.Standard/1.2.2": {
+    "LaunchControl.Standard/1.2.4": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

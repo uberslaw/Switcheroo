@@ -1,0 +1,23 @@
+<div class="rack rack-{{ stack.role }}">
+  <div class="rack-head">
+    <h4>{{ stack.name }}</h4>
+    <p class="muted">{{ stack.room }} · {{ stack.members|length }} member{{ 's' if stack.members|length != 1 else '' }}{% if stack.role == 'core' %} · Catalyst 9500{% elif stack.role == 'aux' %} · physical order #3, #1, #2{% endif %}</p>
+  </div>
+  <div class="rack-posts" role="list">
+    {% for switch in stack.members %}
+    {% set card = card_by_id[switch.id] %}
+    <a class="rack-member" href="/switches/{{ switch.id }}" role="listitem" title="Open {{ switch.name }} faceplate">
+      <span class="member-num">#{{ switch.member_number }}</span>
+      {% include "partials/mini_chassis.html" %}
+      <span class="mini-caption">
+        <strong>{{ switch.name }}</strong>
+        {% if switch.stack_role == 'aux' and (switch.member_number == 3 or 'AUX-03' in switch.name) %}
+        <span class="muted">3rd aux · empty · no FO</span>
+        {% else %}
+        <span class="mono dim">{{ switch.management_ip }}</span>
+        {% endif %}
+      </span>
+    </a>
+    {% endfor %}
+  </div>
+</div>

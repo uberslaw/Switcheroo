@@ -17,5 +17,6 @@
   <resetfailure>1 hour</resetfailure>
   <startmode>Automatic</startmode>
   <delayedAutoStart>true</delayedAutoStart>
-  <stoptimeout>15 sec</stoptimeout>
+  <stoptimeout>30 sec</stoptimeout>
+  <stopparentprocessfirst>true</stopparentprocessfirst>
 </service>

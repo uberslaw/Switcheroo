@@ -10,8 +10,34 @@
   <label>Management IP
     <input name="management_ip" value="{{ switch.management_ip if switch else '' }}" placeholder="Use a real mgmt address only for on-box devices">
   </label>
-  <label>Location / notes
-    <input name="location" value="{{ switch.location if switch else '' }}">
+  <label>Office / location
+    <input name="location" value="{{ switch.location if switch else '' }}" placeholder="Brisbane — used for CS office auto-approve">
+  </label>
+  <label>Room
+    <input name="room" value="{{ switch.room if switch else '' }}" placeholder="Level 27 Main Comms Room">
+  </label>
+  <label>Stack name
+    <input name="stack_name" value="{{ switch.stack_name if switch else '' }}" placeholder="Level 27 Floor Stack">
+  </label>
+  <label>Stack role
+    <select name="stack_role">
+      <option value="" {% if not switch or not switch.stack_role %}selected{% endif %}>None (standalone card)</option>
+      <option value="floor" {% if switch and switch.stack_role == 'floor' %}selected{% endif %}>floor</option>
+      <option value="aux" {% if switch and switch.stack_role == 'aux' %}selected{% endif %}>aux</option>
+      <option value="core" {% if switch and switch.stack_role == 'core' %}selected{% endif %}>core</option>
+    </select>
+  </label>
+  <label>Member number (#1, #2, …)
+    <input name="member_number" type="number" min="0" value="{{ switch.member_number if switch else 0 }}">
+  </label>
+  <label>Rack order (top → bottom, 1 is top)
+    <input name="rack_order" type="number" min="0" value="{{ switch.rack_order if switch else 0 }}">
+  </label>
+  <label>Chassis
+    <select name="chassis_model">
+      <option value="9300" {% if not switch or not switch.is_9500 %}selected{% endif %}>Catalyst 9300 (48-port access)</option>
+      <option value="9500" {% if switch and switch.is_9500 %}selected{% endif %}>Catalyst 9500 (core stand-in)</option>
+    </select>
   </label>
   <label>Notes
     <textarea name="notes" rows="3">{{ switch.notes if switch else '' }}</textarea>

@@ -4,9 +4,9 @@
 {% block body %}
 <div class="page-head">
   <div>
-    <a class="crumb" href="/">← Switches</a>
+    <a class="crumb" href="{% if switch.stack_name %}/offices/{{ switch.location|office_slug }}{% else %}/{% endif %}">{% if switch.stack_name %}← {{ switch.location }}{% else %}← Switches{% endif %}</a>
     <h1>{{ switch.name }}</h1>
-    <p class="muted">{{ switch.location }} · <span class="mono">{{ switch.management_ip }}</span>
+    <p class="muted">{{ switch.location }}{% if switch.room %} · {{ switch.room }}{% endif %}{% if switch.stack_name %} · {{ switch.stack_name }} #{{ switch.member_number }}{% endif %} · <span class="mono">{{ switch.management_ip }}</span>
       {% if switch.notes %} · {{ switch.notes }}{% endif %}
     </p>
   </div>

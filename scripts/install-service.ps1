@@ -118,7 +118,8 @@ function New-WinswXml {
   <resetfailure>1 hour</resetfailure>
   <startmode>Automatic</startmode>
   <delayedAutoStart>true</delayedAutoStart>
-  <stoptimeout>15 sec</stoptimeout>
+  <stoptimeout>30 sec</stoptimeout>
+  <stopparentprocessfirst>true</stopparentprocessfirst>
 </service>
 "@
     $utf8 = New-Object System.Text.UTF8Encoding $false
@@ -180,15 +181,13 @@ function Get-VenvPythonLockers {
                     if (-not $rows[$procId].CommandLine) { $rows[$procId].CommandLine = $pathName }
                 }
                 else {
-                    $leaf = if ($pathName) { [System.IO.Path]::GetFileName($pathName) } else { "" }
-                    if ($leaf -match '(?i)^(python\.exe|pythonw\.exe|pythonservice\.exe)$') {
-                        $rows[$procId] = [pscustomobject]@{
-                            Pid         = $procId
-                            ParentPid   = 0
-                            Name        = $leaf
-                            Path        = $pathName
-                            CommandLine = $pathName
-                        }
+                    $leaf = if ($pathName) { [System.IO.Path]::GetFileName($pathName) } else { "service" }
+                    $rows[$procId] = [pscustomobject]@{
+                        Pid         = $procId
+                        ParentPid   = 0
+                        Name        = $leaf
+                        Path        = $pathName
+                        CommandLine = $pathName
                     }
                 }
             }
@@ -198,7 +197,9 @@ function Get-VenvPythonLockers {
 
     $matched = @{}
     foreach ($row in $rows.Values) {
-        if ((Test-VenvNeedle $row.Path) -or (Test-VenvNeedle $row.CommandLine) -or ($row.ParentPid -gt 0 -and $servicePids.ContainsKey($row.ParentPid))) {
+        $inRoot = (Test-VenvNeedle $row.Path) -or (Test-VenvNeedle $row.CommandLine)
+        $moduleApp = [string]$row.CommandLine -match '-m\s+app'
+        if ($inRoot -or ($moduleApp -and $inRoot) -or $servicePids.ContainsKey($row.Pid) -or ($row.ParentPid -gt 0 -and $servicePids.ContainsKey($row.ParentPid))) {
             $matched[$row.Pid] = $row
         }
     }
@@ -229,7 +230,7 @@ function Write-VenvLockers {
     param($Lockers, [string]$Context)
     Write-Host ""
     if (-not $Lockers -or @($Lockers).Count -eq 0) {
-        Write-InstallLog "$Context : no python.exe / pythonw.exe / pythonservice.exe using this install's .venv or venv"
+        Write-InstallLog "$Context : no python.exe / pythonw.exe / pythonservice.exe using this install's .venv, venv, or python -m app"
         Write-InstallLog "Note: Heimdall (C:\Heimdall) and Serraview Insights (C:\Serraview Insights) use other venvs. They do not lock this product's site-packages. The blocker is this product's python."
         Write-Host "Python using this venv: (none)"
         return
@@ -257,16 +258,48 @@ function Stop-ProductServiceForPip {
     Write-InstallLog "Stopping $ServiceName before pip (running venv python holds package files)"
     Write-Host "Stopping $ServiceName so pip can update this venv..." -ForegroundColor Cyan
     try {
-        Stop-Service -Name $ServiceName -Force -ErrorAction Stop
+        if ($svc.Status -ne 'StopPending') {
+            $svc.Stop()
+        }
+        $svc.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(12))
     }
     catch {
-        Write-InstallLog "Stop-Service failed: $($_.Exception.Message)" -Level "WARN"
+        $ex = $_.Exception
+        $parts = @()
+        while ($ex) {
+            if ($ex -is [System.ComponentModel.Win32Exception]) {
+                $parts += "$($ex.GetType().Name) (Win32 $($ex.NativeErrorCode)): $($ex.Message)"
+            }
+            else {
+                $parts += "$($ex.GetType().Name): $($ex.Message)"
+            }
+            $ex = $ex.InnerException
+        }
+        Write-InstallLog "Stop-Service failed: $($parts -join ' — ')" -Level "WARN"
     }
-    $deadline = (Get-Date).AddSeconds(30)
+    $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if ($svc -and $svc.Status -ne 'Stopped') {
+        $winsw = Join-Path $script:RepoRoot "scripts\winsw\Switcheroo.exe"
+        if (Test-Path -LiteralPath $winsw) {
+            Write-InstallLog "Service still $($svc.Status); trying WinSW stop"
+            try { & $winsw stop } catch { Write-InstallLog $_.Exception.Message -Level "WARN" }
+            Start-Sleep -Seconds 2
+        }
+        $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        if ($svc -and $svc.Status -ne 'Stopped') {
+            $cim = Get-CimInstance -ClassName Win32_Service -Filter ("Name='" + ($ServiceName.Replace("'", "''")) + "'") -ErrorAction SilentlyContinue
+            $svcPid = if ($cim) { [int]$cim.ProcessId } else { 0 }
+            if ($svcPid -gt 0) {
+                Write-InstallLog "Service still $($svc.Status); taskkill PID $svcPid"
+                Start-Process -FilePath "taskkill.exe" -ArgumentList "/F", "/PID", "$svcPid", "/T" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue | Out-Null
+            }
+        }
+    }
+    $deadline = (Get-Date).AddSeconds(20)
     do {
         Start-Sleep -Milliseconds 400
         $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
-        if ($svc -and $svc.Status -eq 'Stopped') { break }
+        if (-not $svc -or $svc.Status -eq 'Stopped') { break }
     } while ((Get-Date) -lt $deadline)
     $state = if ($svc) { [string]$svc.Status } else { "missing" }
     Write-InstallLog "Service $ServiceName status=$state"
