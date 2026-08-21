@@ -42,6 +42,57 @@ def sites(request: Request, db: Session = Depends(get_db), user: User = Depends(
     )
 
 
+@router.post("/sites")
+def create_site(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+    name: str = Form(...),
+    notes: str = Form(""),
+):
+    rd.require_cap(db, user, RACK_CAP_MANAGE_RACKS)
+    try:
+        site = rd.create_site(db, name=name, notes=notes)
+        db.commit()
+        flash(request, f"Created site {site.name}.", "ok")
+        return RedirectResponse(f"/racks/sites/{site.id}", status_code=303)
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse("/racks", status_code=303)
+
+
+@router.post("/sites/{site_id}/racks")
+def create_rack(
+    site_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+    name: str = Form(...),
+    floor: str = Form(""),
+    room: str = Form(""),
+    ru_height: int = Form(45),
+    face: str = Form(RACK_FACE_FRONT),
+):
+    rd.require_cap(db, user, RACK_CAP_MANAGE_RACKS)
+    try:
+        rack = rd.create_rack(
+            db,
+            site_id=site_id,
+            name=name,
+            floor=floor,
+            room=room,
+            ru_height=ru_height,
+        )
+        db.commit()
+        flash(request, f"Created rack {rack.name} ({rack.ru_height}U).", "ok")
+        return RedirectResponse(f"/racks/{rack.id}?face={face}", status_code=303)
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse(f"/racks/sites/{site_id}?face={face}", status_code=303)
+
+
 @router.get("/sites/{site_id}")
 def site_detail(
     site_id: int,
@@ -100,7 +151,113 @@ def rack_detail(
         caps=caps,
         can_edit=RACK_CAP_EDIT_LAYOUT in caps,
         can_manage_catalog=RACK_CAP_MANAGE_CATALOG in caps,
+        can_manage_racks=RACK_CAP_MANAGE_RACKS in caps,
+        silhouettes=rd.SILHOUETTES,
     )
+
+
+@router.post("/catalog/categories")
+def create_category(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+    name: str = Form(...),
+    silhouette: str = Form("generic"),
+    back_to: str = Form("/racks"),
+):
+    rd.require_cap(db, user, RACK_CAP_MANAGE_CATALOG)
+    try:
+        category = rd.create_category(db, name=name, silhouette=silhouette)
+        db.commit()
+        flash(request, f"Added category {category.name}.", "ok")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse(back_to, status_code=303)
+
+
+@router.post("/catalog/types")
+def create_item_type(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+    category_id: int = Form(...),
+    name: str = Form(...),
+    default_ru_height: int = Form(1),
+    default_face: str = Form(RACK_FACE_FRONT),
+    default_mount: str = Form(RACK_MOUNT_RU),
+    default_network_ports: int = Form(0),
+    default_power_ports: int = Form(0),
+    back_to: str = Form("/racks"),
+):
+    rd.require_cap(db, user, RACK_CAP_MANAGE_CATALOG)
+    try:
+        item_type = rd.create_item_type(
+            db,
+            category_id=category_id,
+            name=name,
+            default_ru_height=default_ru_height,
+            default_face=default_face,
+            default_mount=default_mount,
+            default_network_ports=default_network_ports,
+            default_power_ports=default_power_ports,
+        )
+        db.commit()
+        flash(request, f"Added {item_type.name} to the catalog.", "ok")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse(back_to, status_code=303)
+
+
+@router.post("/{rack_id}/update")
+def update_rack(
+    rack_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+    name: str = Form(...),
+    floor: str = Form(""),
+    room: str = Form(""),
+    ru_height: int = Form(...),
+    notes: str = Form(""),
+    face: str = Form(RACK_FACE_FRONT),
+):
+    rd.require_cap(db, user, RACK_CAP_MANAGE_RACKS)
+    rack = rd.get_rack(db, rack_id)
+    try:
+        rd.update_rack(
+            db,
+            rack,
+            name=name,
+            floor=floor,
+            room=room,
+            ru_height=ru_height,
+            notes=notes,
+        )
+        db.commit()
+        flash(request, "Rack updated.", "ok")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse(f"/racks/{rack_id}?face={face}", status_code=303)
+
+
+@router.post("/{rack_id}/delete")
+def delete_rack(
+    rack_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+):
+    rd.require_cap(db, user, RACK_CAP_MANAGE_RACKS)
+    rack = rd.get_rack(db, rack_id)
+    site_id = rack.site_id
+    name = rack.name
+    rd.delete_rack(db, rack)
+    db.commit()
+    flash(request, f"Removed rack {name}.", "ok")
+    return RedirectResponse(f"/racks/sites/{site_id}", status_code=303)
 
 
 @router.post("/{rack_id}/items")

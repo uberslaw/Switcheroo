@@ -54,8 +54,9 @@
     </div>
   </section>
 
-  {% if can_edit %}
+  {% if can_edit or can_manage_catalog or can_manage_racks %}
   <aside class="elev-editor">
+    {% if can_edit %}
     <section class="panel">
       <h2>Place item</h2>
       <form method="post" action="/racks/{{ rack.id }}/items" class="stack-form">
@@ -109,6 +110,68 @@
       <p class="muted">No RU-mounted items on this rack yet.</p>
       {% endfor %}
     </section>
+    {% endif %}
+
+    {% if can_manage_catalog %}
+    <section class="panel">
+      <h2>Add to catalog</h2>
+      <form method="post" action="/racks/catalog/types" class="stack-form">
+        <input type="hidden" name="back_to" value="/racks/{{ rack.id }}?face={{ face }}">
+        <label>Category
+          <select name="category_id" required>
+            {% for cat in catalog %}<option value="{{ cat.id }}">{{ cat.name }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Name <input name="name" required placeholder="e.g. HPE DL380 Gen11"></label>
+        <label>Default height (U) <input type="number" name="default_ru_height" value="1" min="1" max="100"></label>
+        <label>Default face
+          <select name="default_face">
+            <option value="front">front</option>
+            <option value="back">back</option>
+            <option value="both">both</option>
+          </select>
+        </label>
+        <label>Mount
+          <select name="default_mount">
+            <option value="ru">RU slot</option>
+            <option value="side_pdu">vertical / side PDU</option>
+          </select>
+        </label>
+        <label>Network ports <input type="number" name="default_network_ports" value="0" min="0"></label>
+        <label>Power ports <input type="number" name="default_power_ports" value="0" min="0"></label>
+        <button class="btn btn-small btn-primary" type="submit">Add item type</button>
+      </form>
+      <form method="post" action="/racks/catalog/categories" class="stack-form inline-move">
+        <input type="hidden" name="back_to" value="/racks/{{ rack.id }}?face={{ face }}">
+        <label>New category <input name="name" required placeholder="e.g. KVM"></label>
+        <label>Drawing style
+          <select name="silhouette">
+            {% for s in silhouettes %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+          </select>
+        </label>
+        <button class="btn btn-small" type="submit">Add category</button>
+      </form>
+    </section>
+    {% endif %}
+
+    {% if can_manage_racks %}
+    <section class="panel">
+      <h2>Rack settings</h2>
+      <form method="post" action="/racks/{{ rack.id }}/update" class="stack-form">
+        <input type="hidden" name="face" value="{{ face }}">
+        <label>Rack name <input name="name" value="{{ rack.name }}" required></label>
+        <label>Floor <input name="floor" value="{{ rack.floor }}"></label>
+        <label>Room <input name="room" value="{{ rack.room }}"></label>
+        <label>RU limit <input type="number" name="ru_height" value="{{ rack.ru_height }}" min="1" max="100" required></label>
+        <label>Notes <input name="notes" value="{{ rack.notes }}"></label>
+        <button class="btn btn-small btn-primary" type="submit">Save rack</button>
+      </form>
+      <form method="post" action="/racks/{{ rack.id }}/delete" class="inline-move"
+            onsubmit="return confirm('Delete {{ rack.name }} and everything placed in it?');">
+        <button class="btn btn-small btn-danger" type="submit">Delete rack</button>
+      </form>
+    </section>
+    {% endif %}
   </aside>
   {% endif %}
 </div>

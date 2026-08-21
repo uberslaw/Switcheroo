@@ -8,6 +8,7 @@ from app.models import (
     RACK_FACE_FRONT,
     Rack,
     RackItem,
+    RackItemCategory,
     RackItemType,
     RackSite,
     UserRackPermission,
@@ -131,6 +132,114 @@ def test_import_idempotent(seeded_db):
     # force reimport still works
     again = import_brisbane_layout(seeded_db, force=True)
     assert again["items"] > 0
+
+
+def test_create_rack_with_ru_limit(networks_client, seeded_db):
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
+    made = networks_client.post(
+        f"/racks/sites/{site.id}/racks",
+        data={"name": "New IDF rack", "floor": "L15", "room": "IDF", "ru_height": "24"},
+        follow_redirects=False,
+    )
+    assert made.status_code == 303
+    rack = seeded_db.scalar(select(Rack).where(Rack.name == "New IDF rack"))
+    assert rack is not None
+    assert rack.ru_height == 24
+    elev = rd.elevation_rows(rd.get_rack(seeded_db, rack.id), RACK_FACE_FRONT)
+    assert elev["rows"][0]["ru"] == 24
+    assert elev["rows"][-1]["ru"] == 1
+
+
+def test_rename_rack_and_change_ru_limit(seeded_db):
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
+    rack = rd.create_rack(seeded_db, site_id=site.id, name="Temp rack", ru_height=12)
+    seeded_db.flush()
+    rd.update_rack(seeded_db, rack, name="Renamed rack", ru_height=20)
+    assert rack.name == "Renamed rack"
+    assert rack.ru_height == 20
+
+
+def test_cannot_shrink_rack_below_placed_gear(seeded_db):
+    from fastapi import HTTPException
+
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
+    rack = rd.create_rack(seeded_db, site_id=site.id, name="Shrink test", ru_height=20)
+    blank = seeded_db.scalar(select(RackItemType).where(RackItemType.name == "Blanking - Spare"))
+    rd.place_item(
+        seeded_db,
+        rack,
+        item_type_id=blank.id,
+        name="High blank",
+        ru_start=18,
+        ru_height=1,
+        face=RACK_FACE_FRONT,
+    )
+    seeded_db.flush()
+    try:
+        rd.update_rack(seeded_db, rack, ru_height=10)
+        raise AssertionError("expected refusal")
+    except HTTPException as exc:
+        assert "RU18" in str(exc.detail)
+    assert rack.ru_height == 20
+
+
+def test_duplicate_rack_name_rejected(seeded_db):
+    from fastapi import HTTPException
+
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
+    try:
+        rd.create_rack(seeded_db, site_id=site.id, name="FDR L26", ru_height=45)
+        raise AssertionError("expected duplicate rejection")
+    except HTTPException as exc:
+        assert "already has a rack" in str(exc.detail)
+
+
+def test_create_site_and_catalog_type(networks_client, seeded_db):
+    made = networks_client.post(
+        "/racks/sites", data={"name": "Sydney George St", "notes": "new fitout"}, follow_redirects=False
+    )
+    assert made.status_code == 303
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Sydney George St"))
+    assert site is not None
+
+    category = seeded_db.scalar(select(RackItemCategory).where(RackItemCategory.name == "Server"))
+    added = networks_client.post(
+        "/racks/catalog/types",
+        data={
+            "category_id": str(category.id),
+            "name": "HPE DL380 Gen11",
+            "default_ru_height": "2",
+            "default_face": "front",
+            "default_mount": "ru",
+            "default_network_ports": "4",
+            "default_power_ports": "2",
+            "back_to": "/racks",
+        },
+        follow_redirects=False,
+    )
+    assert added.status_code == 303
+    item_type = seeded_db.scalar(select(RackItemType).where(RackItemType.name == "HPE DL380 Gen11"))
+    assert item_type is not None
+    assert item_type.default_ru_height == 2
+    assert item_type.default_network_ports == 4
+
+
+def test_cs_can_edit_layout_but_not_create_racks(cs_client, seeded_db):
+    """Seeded CS gets view + edit_layout, not rack_manage_racks."""
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
+    denied = cs_client.post(
+        f"/racks/sites/{site.id}/racks",
+        data={"name": "CS made this", "ru_height": "10"},
+        follow_redirects=False,
+    )
+    assert denied.status_code == 403
+    assert seeded_db.scalar(select(Rack).where(Rack.name == "CS made this")) is None
+
+    rack = seeded_db.scalar(select(Rack).where(Rack.name == "FDR L26"))
+    page = cs_client.get(f"/racks/{rack.id}")
+    assert page.status_code == 200
+    assert "Place item" in page.text
+    assert "Rack settings" not in page.text
 
 
 def test_networks_rack_permissions_page(networks_client, seeded_db):

@@ -18,6 +18,17 @@
 </div>
 {% endif %}
 
+{% if can_manage_racks %}
+<section class="panel" style="margin-top:1.25rem">
+  <h2>Add a site</h2>
+  <form method="post" action="/racks/sites" class="inline-vlan">
+    <input name="name" required placeholder="site name (e.g. Sydney George St)">
+    <input name="notes" placeholder="notes (optional)">
+    <button class="btn btn-small btn-primary" type="submit">Create site</button>
+  </form>
+</section>
+{% endif %}
+
 {% if user.role == 'networks' %}
 <p class="muted" style="margin-top:1.25rem"><a href="/admin/rack-permissions">Manage rack permissions</a></p>
 {% endif %}

@@ -1147,3 +1147,18 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
   color: #f0c8bc;
 }
 .btn-danger:hover { background: #5a2a1c; }
+.ru-limit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.ru-limit input {
+  width: 4.5rem;
+  font: inherit;
+  color: var(--text);
+  background: #0c0e0a;
+  border: 1px solid var(--line);
+  padding: 0.3rem 0.4rem;
+}

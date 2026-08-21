@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import (
@@ -126,6 +126,179 @@ def get_rack(db: Session, rack_id: int) -> Rack:
     if rack is None:
         raise HTTPException(status_code=404, detail="Rack not found")
     return rack
+
+
+SILHOUETTES = (
+    "switch",
+    "patch",
+    "cable",
+    "server",
+    "mini",
+    "storage",
+    "ups",
+    "pdu",
+    "shelf",
+    "blank",
+    "telco",
+    "fw",
+    "console",
+    "reserve",
+    "generic",
+)
+
+
+def create_site(db: Session, *, name: str, notes: str = "") -> RackSite:
+    clean = name.strip()
+    if not clean:
+        raise HTTPException(status_code=400, detail="Site name is required")
+    if db.scalar(select(RackSite).where(RackSite.name == clean)) is not None:
+        raise HTTPException(status_code=400, detail=f"Site {clean} already exists")
+    highest = db.scalar(select(func.max(RackSite.sort_order))) or 0
+    site = RackSite(name=clean, notes=notes.strip(), sort_order=highest + 10)
+    db.add(site)
+    db.flush()
+    return site
+
+
+def create_rack(
+    db: Session,
+    *,
+    site_id: int,
+    name: str,
+    floor: str = "",
+    room: str = "",
+    ru_height: int = 45,
+    notes: str = "",
+) -> Rack:
+    site = db.get(RackSite, site_id)
+    if site is None:
+        raise HTTPException(status_code=404, detail="Site not found")
+    clean = name.strip()
+    if not clean:
+        raise HTTPException(status_code=400, detail="Rack name is required")
+    if db.scalar(select(Rack).where(Rack.site_id == site_id, Rack.name == clean)) is not None:
+        raise HTTPException(status_code=400, detail=f"{site.name} already has a rack named {clean}")
+    if not 1 <= ru_height <= 100:
+        raise HTTPException(status_code=400, detail="RU height must be between 1 and 100")
+    highest = db.scalar(select(func.max(Rack.sort_order)).where(Rack.site_id == site_id)) or 0
+    rack = Rack(
+        site_id=site_id,
+        name=clean,
+        floor=floor.strip(),
+        room=room.strip(),
+        ru_height=ru_height,
+        sort_order=highest + 10,
+        notes=notes.strip(),
+    )
+    db.add(rack)
+    db.flush()
+    return rack
+
+
+def update_rack(
+    db: Session,
+    rack: Rack,
+    *,
+    name: str | None = None,
+    floor: str | None = None,
+    room: str | None = None,
+    ru_height: int | None = None,
+    notes: str | None = None,
+) -> Rack:
+    if name is not None:
+        clean = name.strip()
+        if not clean:
+            raise HTTPException(status_code=400, detail="Rack name is required")
+        clash = db.scalar(
+            select(Rack).where(Rack.site_id == rack.site_id, Rack.name == clean, Rack.id != rack.id)
+        )
+        if clash is not None:
+            raise HTTPException(status_code=400, detail=f"Another rack here is already named {clean}")
+        rack.name = clean
+    if floor is not None:
+        rack.floor = floor.strip()
+    if room is not None:
+        rack.room = room.strip()
+    if notes is not None:
+        rack.notes = notes.strip()
+    if ru_height is not None and ru_height != rack.ru_height:
+        if not 1 <= ru_height <= 100:
+            raise HTTPException(status_code=400, detail="RU height must be between 1 and 100")
+        highest_used = 0
+        for item in db.scalars(select(RackItem).where(RackItem.rack_id == rack.id)).all():
+            highest_used = max(highest_used, item.ru_start)
+        if ru_height < highest_used:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot shrink below RU{highest_used} — move or remove gear above that first",
+            )
+        rack.ru_height = ru_height
+    db.flush()
+    return rack
+
+
+def delete_rack(db: Session, rack: Rack) -> None:
+    db.delete(rack)
+    db.flush()
+
+
+def create_category(db: Session, *, name: str, silhouette: str = "generic") -> RackItemCategory:
+    clean = name.strip()
+    if not clean:
+        raise HTTPException(status_code=400, detail="Category name is required")
+    if db.scalar(select(RackItemCategory).where(RackItemCategory.name == clean)) is not None:
+        raise HTTPException(status_code=400, detail=f"Category {clean} already exists")
+    if silhouette not in SILHOUETTES:
+        silhouette = "generic"
+    highest = db.scalar(select(func.max(RackItemCategory.sort_order))) or 0
+    category = RackItemCategory(name=clean, silhouette=silhouette, sort_order=highest + 10)
+    db.add(category)
+    db.flush()
+    return category
+
+
+def create_item_type(
+    db: Session,
+    *,
+    category_id: int,
+    name: str,
+    default_ru_height: int = 1,
+    default_face: str = RACK_FACE_FRONT,
+    default_mount: str = RACK_MOUNT_RU,
+    default_network_ports: int = 0,
+    default_power_ports: int = 0,
+    notes: str = "",
+) -> RackItemType:
+    category = db.get(RackItemCategory, category_id)
+    if category is None:
+        raise HTTPException(status_code=404, detail="Category not found")
+    clean = name.strip()
+    if not clean:
+        raise HTTPException(status_code=400, detail="Item type name is required")
+    existing = db.scalar(
+        select(RackItemType).where(RackItemType.category_id == category_id, RackItemType.name == clean)
+    )
+    if existing is not None:
+        raise HTTPException(status_code=400, detail=f"{category.name} already has {clean}")
+    if default_face not in (RACK_FACE_FRONT, RACK_FACE_BACK, RACK_FACE_BOTH):
+        default_face = RACK_FACE_FRONT
+    if default_mount not in (RACK_MOUNT_RU, RACK_MOUNT_SIDE_PDU):
+        default_mount = RACK_MOUNT_RU
+    if default_mount == RACK_MOUNT_RU and not 1 <= default_ru_height <= 100:
+        raise HTTPException(status_code=400, detail="Default height must be between 1 and 100 RU")
+    item_type = RackItemType(
+        category_id=category_id,
+        name=clean,
+        default_ru_height=0 if default_mount == RACK_MOUNT_SIDE_PDU else default_ru_height,
+        default_face=default_face,
+        default_mount=default_mount,
+        default_network_ports=max(0, default_network_ports),
+        default_power_ports=max(0, default_power_ports),
+        notes=notes.strip(),
+    )
+    db.add(item_type)
+    db.flush()
+    return item_type
 
 
 def catalog_tree(db: Session) -> list[RackItemCategory]:
