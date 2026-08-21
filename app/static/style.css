@@ -1264,6 +1264,14 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
   font-size: 0.82rem;
   color: var(--muted);
 }
+.reimport-form {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
 .ru-limit input {
   width: 4.5rem;
   font: inherit;

@@ -93,6 +93,28 @@ def create_rack(
     return RedirectResponse(f"/racks/sites/{site_id}?face={face}", status_code=303)
 
 
+@router.post("/sites/{site_id}/reimport")
+def reimport_site(
+    site_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+):
+    """Rebuild a site from the seed workbook. Destructive: drops layout edits."""
+    rd.require_cap(db, user, RACK_CAP_MANAGE_RACKS)
+    site = rd.get_site(db, site_id)
+    try:
+        from app.services.rack_import import import_brisbane_layout
+
+        stats = import_brisbane_layout(db, force=True)
+        db.commit()
+        flash(request, f"Re-imported {site.name}: {stats['racks']} racks, {stats['items']} items.", "ok")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse(f"/racks/sites/{site_id}", status_code=303)
+
+
 @router.get("/sites/{site_id}")
 def site_detail(
     site_id: int,

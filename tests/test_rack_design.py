@@ -32,6 +32,47 @@ def test_parse_brisbane_workbook_has_doc_ru_order():
     assert any(span[0] >= 40 for span in server_b["spans"])
 
 
+def test_filler_rows_stay_one_ru_each(seeded_db):
+    """A 27U merged blank would force deleting a whole block to place one server."""
+    blanks = [
+        i
+        for i in seeded_db.scalars(select(RackItem)).all()
+        if "blanking" in (i.name or "").lower() and i.mount == "ru"
+    ]
+    assert blanks, "expected imported blanking rows"
+    assert max(i.ru_height for i in blanks) == 1
+    shelves = [i for i in seeded_db.scalars(select(RackItem)).all() if (i.name or "").lower() == "shelves"]
+    assert shelves and max(i.ru_height for i in shelves) == 1
+
+
+def test_real_devices_still_merge(seeded_db):
+    """Filler stays 1U, but a genuine multi-U device must keep its span."""
+    tall = [
+        i
+        for i in seeded_db.scalars(select(RackItem)).all()
+        if i.mount == "ru" and i.ru_height > 1
+    ]
+    assert tall, "expected at least one multi-RU device (UPS / NetApp)"
+    assert any("ups" in (i.name or "").lower() for i in tall)
+
+
+def test_reimport_route_rebuilds_site(networks_client, seeded_db):
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
+    rack = seeded_db.scalar(select(Rack).where(Rack.name == "FDR L26"))
+    rd.update_rack(seeded_db, rack, name="Renamed before reimport")
+    seeded_db.commit()
+    done = networks_client.post(f"/racks/sites/{site.id}/reimport", follow_redirects=False)
+    assert done.status_code == 303
+    assert seeded_db.scalar(select(Rack).where(Rack.name == "Renamed before reimport")) is None
+    assert seeded_db.scalar(select(Rack).where(Rack.name == "FDR L26")) is not None
+
+
+def test_cs_cannot_reimport(cs_client, seeded_db):
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
+    denied = cs_client.post(f"/racks/sites/{site.id}/reimport", follow_redirects=False)
+    assert denied.status_code == 403
+
+
 def test_seed_imports_racks_and_cs_perms(seeded_db):
     site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
     assert site is not None

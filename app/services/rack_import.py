@@ -137,6 +137,19 @@ def _ru_number(cell: Any) -> int | None:
     return int(m.group(1))
 
 
+def _is_filler(label: str) -> bool:
+    """Repeated filler rows are one entry per RU in the sheet, not one tall device.
+
+    Merging them would mean deleting a 27U blank just to place one server, so
+    each RU stays independently replaceable.
+    """
+    lower = label.lower()
+    return any(
+        word in lower
+        for word in ("blanking", "spare", "shelves", "shelf", "cable management", "reserve")
+    )
+
+
 def _merge_spans(cells: dict[int, str]) -> list[tuple[int, int, str]]:
     """cells: ru -> label. Return (ru_start_top, height, label). Doc: high RU at top."""
     if not cells:
@@ -150,9 +163,10 @@ def _merge_spans(cells: dict[int, str]) -> list[tuple[int, int, str]]:
         height = 1
         j = i + 1
         # identical labels continue downward (lower RU numbers)
-        while j < len(rus) and rus[j] == ru - height and cells[rus[j]] == label:
-            height += 1
-            j += 1
+        if not _is_filler(label):
+            while j < len(rus) and rus[j] == ru - height and cells[rus[j]] == label:
+                height += 1
+                j += 1
         # NetApp shelf name + model on next RU down
         if (
             j < len(rus)
