@@ -45,6 +45,31 @@ def test_filler_rows_stay_one_ru_each(seeded_db):
     assert shelves and max(i.ru_height for i in shelves) == 1
 
 
+def test_filler_match_does_not_catch_device_names(seeded_db):
+    """A substring test made "Netapp Disk Shelf" filler, which would split a
+    genuine 2U shelf. Only a leading filler word counts."""
+    from app.services.rack_import import _is_filler
+
+    assert _is_filler("Blanking - Spare")
+    assert _is_filler("Shelves")
+    assert _is_filler("Cable Management")
+    assert _is_filler("Reserve for additional shelf expansion")
+    assert not _is_filler("Netapp Disk Shelf")
+    assert not _is_filler("FAS 2720")
+    assert not _is_filler("1.5 KVA UPS (A) (Old) - BNEUPS2601")
+    assert not _is_filler("Cisco 9300 sw01 - 48 port POE")
+
+
+def test_netapp_shelves_keep_their_span(seeded_db):
+    netapps = [
+        i
+        for i in seeded_db.scalars(select(RackItem)).all()
+        if "netapp" in (i.name or "").lower() and i.mount == "ru"
+    ]
+    assert netapps, "expected imported NetApp shelves"
+    assert all(i.ru_height >= 2 for i in netapps), "a disk shelf must not collapse to 1U"
+
+
 def test_real_devices_still_merge(seeded_db):
     """Filler stays 1U, but a genuine multi-U device must keep its span."""
     tall = [

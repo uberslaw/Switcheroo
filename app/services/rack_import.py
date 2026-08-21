@@ -137,17 +137,21 @@ def _ru_number(cell: Any) -> int | None:
     return int(m.group(1))
 
 
+FILLER_PREFIX = re.compile(
+    r"^\s*(blanking|blank|spare|shelves|shelf|cable management|reserve)\b",
+    re.IGNORECASE,
+)
+
+
 def _is_filler(label: str) -> bool:
     """Repeated filler rows are one entry per RU in the sheet, not one tall device.
 
     Merging them would mean deleting a 27U blank just to place one server, so
-    each RU stays independently replaceable.
+    each RU stays independently replaceable. Matched on the leading word only:
+    a substring test would treat "Netapp Disk Shelf" as filler and split a
+    genuine 2U shelf into two 1U rows.
     """
-    lower = label.lower()
-    return any(
-        word in lower
-        for word in ("blanking", "spare", "shelves", "shelf", "cable management", "reserve")
-    )
+    return FILLER_PREFIX.match(label or "") is not None
 
 
 def _merge_spans(cells: dict[int, str]) -> list[tuple[int, int, str]]:
