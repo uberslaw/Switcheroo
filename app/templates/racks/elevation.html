@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}{{ rack.name }} · Rack Design · Switcheroo{% endblock %}
+{% block main_class %}wrap wrap-wide{% endblock %}
+{% block body %}
+<a class="crumb" href="/racks/sites/{{ site.id }}?face={{ face }}">← {{ site.name }}</a>
+<div class="rack-design-head">
+  <div>
+    <h1>{{ rack.name }}</h1>
+    <p class="muted">{{ rack.floor }}{% if rack.room %} · {{ rack.room }}{% endif %} · {{ rack.ru_height }}U · {{ face }} face · high RU at top</p>
+  </div>
+  <div class="face-toggle">
+    <a class="btn {% if face == 'front' %}btn-primary{% endif %}" href="/racks/{{ rack.id }}?face=front">Front</a>
+    <a class="btn {% if face == 'back' %}btn-primary{% endif %}" href="/racks/{{ rack.id }}?face=back">Back</a>
+  </div>
+</div>
+
+<div class="elev-detail-grid">
+  <section class="elev-rack elev-rack-solo">
+    <div class="elev-frame">
+      {% if side_left %}
+      <div class="elev-side elev-side-left">
+        {% for p in side_left %}<div class="elev-pdu sil-pdu">{{ p.name }}</div>{% endfor %}
+      </div>
+      {% endif %}
+      <table class="elev-table elev-table-lg">
+        <tbody>
+        {% for row in rows %}
+          <tr class="{% if row.item %}elev-item sil-{{ row.item.item_type.category.silhouette if row.item.item_type and row.item.item_type.category else 'generic' }}{% elif row.continuation %}elev-cont{% else %}elev-empty{% endif %}">
+            <td class="elev-ru">RU{{ row.ru }}</td>
+            {% if row.item %}
+            <td class="elev-cell" rowspan="{{ row.item.ru_height }}" id="item-{{ row.item.id }}">
+              <div class="elev-label">{{ row.item.name }}</div>
+              {% if row.item.management_ip %}<div class="elev-meta">IP {{ row.item.management_ip }}</div>{% endif %}
+              {% if row.item.network_ports %}<div class="elev-meta">{{ row.item.network_ports }} net ports</div>{% endif %}
+              {% if row.item.ru_height > 1 %}<div class="elev-meta">{{ row.item.ru_height }}U · RU{{ row.item.ru_start }}–RU{{ row.item.ru_end }}</div>{% endif %}
+              {% if can_edit %}
+              <div class="elev-actions">
+                <a class="btn btn-small" href="#edit-{{ row.item.id }}">Edit</a>
+              </div>
+              {% endif %}
+            </td>
+            {% elif not row.continuation %}
+            <td class="elev-cell elev-air"></td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if side_right %}
+      <div class="elev-side elev-side-right">
+        {% for p in side_right %}<div class="elev-pdu sil-pdu">{{ p.name }}</div>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if can_edit %}
+  <aside class="elev-editor">
+    <section class="panel">
+      <h2>Place item</h2>
+      <form method="post" action="/racks/{{ rack.id }}/items" class="stack-form">
+        <input type="hidden" name="face" value="{{ face }}">
+        <label>Catalog type
+          <select name="item_type_id" required>
+            {% for cat in catalog %}
+            <optgroup label="{{ cat.name }}">
+              {% for t in cat.types %}
+              <option value="{{ t.id }}">{{ t.name }} ({{ t.default_ru_height }}U)</option>
+              {% endfor %}
+            </optgroup>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Name <input name="name" placeholder="optional override"></label>
+        <label>Top RU (document) <input type="number" name="ru_start" min="1" max="{{ rack.ru_height }}" required value="{{ rack.ru_height }}"></label>
+        <label>Height (U) <input type="number" name="ru_height" min="0" value="0" title="0 = use catalog default"></label>
+        <label>Mgmt IP <input name="management_ip" placeholder="optional"></label>
+        <label>Notes <input name="notes"></label>
+        <button class="btn btn-primary" type="submit">Place</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>Edit / move / remove</h2>
+      {% for item in rack.items if item.mount == 'ru' %}
+      <details class="item-edit" id="edit-{{ item.id }}">
+        <summary>{{ item.name }} <span class="muted">RU{{ item.ru_start }} · {{ item.face }}</span></summary>
+        <form method="post" action="/racks/items/{{ item.id }}/update" class="stack-form">
+          <input type="hidden" name="face" value="{{ face }}">
+          <label>Name <input name="name" value="{{ item.name }}"></label>
+          <label>Mgmt IP <input name="management_ip" value="{{ item.management_ip }}"></label>
+          <label>Network ports <input type="number" name="network_ports" value="{{ item.network_ports }}" min="0"></label>
+          <label>Power ports <input type="number" name="power_ports" value="{{ item.power_ports }}" min="0"></label>
+          <label>Notes <input name="notes" value="{{ item.notes }}"></label>
+          <button class="btn btn-small btn-primary" type="submit">Save</button>
+        </form>
+        <form method="post" action="/racks/items/{{ item.id }}/move" class="stack-form inline-move">
+          <input type="hidden" name="face" value="{{ face }}">
+          <label>Move top RU <input type="number" name="ru_start" value="{{ item.ru_start }}" min="1" max="{{ rack.ru_height }}"></label>
+          <label>Height <input type="number" name="ru_height" value="{{ item.ru_height }}" min="1"></label>
+          <button class="btn btn-small" type="submit">Move</button>
+        </form>
+        <form method="post" action="/racks/items/{{ item.id }}/delete" onsubmit="return confirm('Remove this item?');">
+          <input type="hidden" name="face" value="{{ face }}">
+          <button class="btn btn-small btn-danger" type="submit">Remove</button>
+        </form>
+      </details>
+      {% else %}
+      <p class="muted">No RU-mounted items on this rack yet.</p>
+      {% endfor %}
+    </section>
+  </aside>
+  {% endif %}
+</div>
+{% endblock %}

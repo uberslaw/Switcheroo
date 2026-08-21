@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Rack permissions · Switcheroo{% endblock %}
+{% block body %}
+<a class="crumb" href="/admin/permissions">← Access</a>
+<h1>Rack Design permissions</h1>
+<p class="muted">Networks always has every capability. CS is seeded with view + edit layout; toggle extras here.</p>
+
+<div class="table-wrap">
+<table class="ports perm-table">
+  <thead>
+    <tr>
+      <th>User</th>
+      <th>Role</th>
+      {% for cap in capabilities %}
+      <th title="{{ cap_labels.get(cap, cap) }}">{{ cap_labels.get(cap, cap) }}</th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}<div class="muted">{{ u.display_name }}</div></td>
+      <td>{{ u.role }}</td>
+      {% for cap in capabilities %}
+      <td>
+        {% if u.role == 'networks' %}
+        <span class="muted">all</span>
+        {% else %}
+        <form method="post" action="/admin/rack-permissions">
+          <input type="hidden" name="user_id" value="{{ u.id }}">
+          <input type="hidden" name="capability" value="{{ cap }}">
+          {% if (u.id, cap) in links %}
+          <input type="hidden" name="granted" value="0">
+          <button class="btn btn-small btn-primary" type="submit">Granted</button>
+          {% else %}
+          <input type="hidden" name="granted" value="1">
+          <button class="btn btn-small" type="submit">Grant</button>
+          {% endif %}
+        </form>
+        {% endif %}
+      </td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

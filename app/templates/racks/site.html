@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ site.name }} · Rack Design · Switcheroo{% endblock %}
+{% block main_class %}wrap wrap-wide{% endblock %}
+{% block body %}
+<a class="crumb" href="/racks">← Rack Design</a>
+<div class="rack-design-head">
+  <div>
+    <h1>{{ site.name }}</h1>
+    <p class="muted">{{ site.notes or 'Side-by-side elevations. High RU at top (document numbering).' }}</p>
+  </div>
+  <div class="face-toggle">
+    <a class="btn {% if face == 'front' %}btn-primary{% endif %}" href="/racks/sites/{{ site.id }}?face=front">Front</a>
+    <a class="btn {% if face == 'back' %}btn-primary{% endif %}" href="/racks/sites/{{ site.id }}?face=back">Back</a>
+  </div>
+</div>
+
+<div class="elev-row">
+  {% for elev in elevations %}
+  {% set rack = elev.rack %}
+  <section class="elev-rack">
+    <header class="elev-rack-head">
+      <div>
+        <h2><a href="/racks/{{ rack.id }}?face={{ face }}">{{ rack.name }}</a></h2>
+        <div class="muted">{{ rack.floor }}{% if rack.room %} · {{ rack.room }}{% endif %} · {{ rack.ru_height }}U</div>
+      </div>
+    </header>
+    <div class="elev-frame">
+      {% if elev.side_left %}
+      <div class="elev-side elev-side-left" title="Left vertical PDUs">
+        {% for p in elev.side_left %}<div class="elev-pdu sil-pdu">{{ p.name }}</div>{% endfor %}
+      </div>
+      {% endif %}
+      <table class="elev-table">
+        <tbody>
+        {% for row in elev.rows %}
+          <tr class="{% if row.item %}elev-item sil-{{ row.item.item_type.category.silhouette if row.item.item_type and row.item.item_type.category else 'generic' }}{% elif row.continuation %}elev-cont{% else %}elev-empty{% endif %}">
+            <td class="elev-ru">RU{{ row.ru }}</td>
+            {% if row.item %}
+            <td class="elev-cell" rowspan="{{ row.item.ru_height }}">
+              <div class="elev-label">{{ row.item.name }}</div>
+              {% if row.item.management_ip %}<div class="elev-meta">{{ row.item.management_ip }}</div>{% endif %}
+              {% if row.item.ru_height > 1 %}<div class="elev-meta">{{ row.item.ru_height }}U · RU{{ row.item.ru_start }}–RU{{ row.item.ru_end }}</div>{% endif %}
+            </td>
+            {% elif not row.continuation %}
+            <td class="elev-cell elev-air"></td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% if elev.side_right %}
+      <div class="elev-side elev-side-right" title="Right vertical PDUs">
+        {% for p in elev.side_right %}<div class="elev-pdu sil-pdu">{{ p.name }}</div>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}
