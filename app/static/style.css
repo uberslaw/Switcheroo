@@ -1275,6 +1275,29 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
   gap: 1rem;
 }
 .catalog-head h2 { margin: 0 0 0.4rem; font-size: 1rem; }
+.cat-list { list-style: none; margin: 0; padding: 0; }
+.cat-list > li { border-top: 1px solid var(--line); }
+/* Full-width rows, not table cells: an edit form squeezed into a narrow
+   column is unusable even once it opens. */
+.cat-row summary, .cat-row-static {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.45rem 0.2rem;
+  cursor: pointer;
+}
+.cat-row-static { cursor: default; }
+.cat-row summary:hover { background: #1c2218; }
+.cat-name { font-weight: 600; }
+.cat-facts { color: var(--muted); font-size: 0.78rem; font-family: var(--mono); }
+.cat-edit {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.6rem 0.2rem 0.8rem;
+  border-top: 1px dashed var(--line);
+}
+.cat-edit .stack-form { max-width: 26rem; }
 .reimport-form {
   display: flex;
   align-items: center;

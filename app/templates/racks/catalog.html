@@ -24,58 +24,60 @@
   {% if not cat.types %}
   <p class="muted">No item types in this category yet.</p>
   {% else %}
-  <div class="table-wrap">
-  <table class="ports">
-    <thead>
-      <tr>
-        <th>Item type</th><th>Default</th><th>Face</th><th>Ports</th><th>Placed</th>
-        {% if can_manage_catalog %}<th>Edit</th>{% endif %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for t in cat.types %}
-      <tr>
-        <td>{{ t.name }}</td>
-        <td>{% if t.default_mount == 'side_pdu' %}vertical rail{% else %}{{ t.default_ru_height }}U{% endif %}</td>
-        <td>{{ t.default_face }}</td>
-        <td>{{ t.default_network_ports }} net · {{ t.default_power_ports }} pwr</td>
-        <td>{{ usage.get(t.id, 0) }}</td>
-        {% if can_manage_catalog %}
-        <td>
-          <details class="item-edit">
-            <summary>Edit</summary>
-            <form method="post" action="/racks/catalog/types/{{ t.id }}/update" class="stack-form">
-              <label>Name <input name="name" value="{{ t.name }}" required></label>
-              {% if t.default_mount != 'side_pdu' %}
-              <label>Default height (U) <input type="number" name="default_ru_height" value="{{ t.default_ru_height }}" min="1" max="100"></label>
-              {% endif %}
-              <label>Default face
-                <select name="default_face">
-                  <option value="front"{% if t.default_face == 'front' %} selected{% endif %}>front</option>
-                  <option value="back"{% if t.default_face == 'back' %} selected{% endif %}>back</option>
-                  <option value="both"{% if t.default_face == 'both' %} selected{% endif %}>both</option>
-                </select>
-              </label>
-              <label>Network ports <input type="number" name="default_network_ports" value="{{ t.default_network_ports }}" min="0"></label>
-              <label>Power ports <input type="number" name="default_power_ports" value="{{ t.default_power_ports }}" min="0"></label>
-              <button class="btn btn-small btn-primary" type="submit">Save</button>
-            </form>
-            {% if usage.get(t.id, 0) == 0 %}
-            <form method="post" action="/racks/catalog/types/{{ t.id }}/delete" class="inline-move"
-                  onsubmit="return confirm('Remove {{ t.name }} from the catalog?');">
-              <button class="btn btn-small btn-danger" type="submit">Remove type</button>
-            </form>
-            {% else %}
-            <p class="muted inline-move">Placed on {{ usage.get(t.id, 0) }} slot{{ 's' if usage.get(t.id, 0) != 1 else '' }} — remove those before deleting.</p>
+  <ul class="cat-list">
+    {% for t in cat.types %}
+    <li>
+      {% if can_manage_catalog %}
+      <details class="cat-row">
+        <summary>
+          <span class="cat-name">{{ t.name }}</span>
+          <span class="cat-facts">
+            {% if t.default_mount == 'side_pdu' %}vertical rail{% else %}{{ t.default_ru_height }}U{% endif %}
+            · {{ t.default_face }}
+            · {{ t.default_network_ports }} net / {{ t.default_power_ports }} pwr
+            · placed {{ usage.get(t.id, 0) }}
+          </span>
+        </summary>
+        <div class="cat-edit">
+          <form method="post" action="/racks/catalog/types/{{ t.id }}/update" class="stack-form">
+            <label>Name <input name="name" value="{{ t.name }}" required></label>
+            {% if t.default_mount != 'side_pdu' %}
+            <label>Default height (U) <input type="number" name="default_ru_height" value="{{ t.default_ru_height }}" min="1" max="100"></label>
             {% endif %}
-          </details>
-        </td>
-        {% endif %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  </div>
+            <label>Default face
+              <select name="default_face">
+                <option value="front"{% if t.default_face == 'front' %} selected{% endif %}>front</option>
+                <option value="back"{% if t.default_face == 'back' %} selected{% endif %}>back</option>
+                <option value="both"{% if t.default_face == 'both' %} selected{% endif %}>both</option>
+              </select>
+            </label>
+            <label>Network ports <input type="number" name="default_network_ports" value="{{ t.default_network_ports }}" min="0"></label>
+            <label>Power ports <input type="number" name="default_power_ports" value="{{ t.default_power_ports }}" min="0"></label>
+            <button class="btn btn-small btn-primary" type="submit">Save</button>
+          </form>
+          {% if usage.get(t.id, 0) == 0 %}
+          <form method="post" action="/racks/catalog/types/{{ t.id }}/delete" class="inline-move"
+                onsubmit="return confirm('Remove {{ t.name }} from the catalog?');">
+            <button class="btn btn-small btn-danger" type="submit">Remove type</button>
+          </form>
+          {% else %}
+          <p class="muted inline-move">Placed on {{ usage.get(t.id, 0) }} rack slot{{ 's' if usage.get(t.id, 0) != 1 else '' }} — remove those before deleting this type.</p>
+          {% endif %}
+        </div>
+      </details>
+      {% else %}
+      <div class="cat-row cat-row-static">
+        <span class="cat-name">{{ t.name }}</span>
+        <span class="cat-facts">
+          {% if t.default_mount == 'side_pdu' %}vertical rail{% else %}{{ t.default_ru_height }}U{% endif %}
+          · {{ t.default_face }}
+          · placed {{ usage.get(t.id, 0) }}
+        </span>
+      </div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
   {% endif %}
 </section>
 {% endfor %}
