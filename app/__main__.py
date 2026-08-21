@@ -57,7 +57,8 @@ def main() -> None:
         )
     print(f"Switcheroo listening on http://{settings.host}:{settings.port}")
     print(f"Logs: {settings.log_file}")
-    print("Lab logins: networks / networks  and  cs / cs  (not for production)")
+    if settings.show_lab_credentials:
+        print("Lab logins: networks / networks  and  cs / cs  (not for production)")
     uv_level = logging.getLevelName(desired_log_level()).lower()
     if uv_level not in {"critical", "error", "warning", "info", "debug", "trace"}:
         uv_level = "info"

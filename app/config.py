@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -13,10 +14,20 @@ if _DOTENV_PATH.exists() and os.getenv("SWITCHEROO_TESTING") != "1":
     load_dotenv(_DOTENV_PATH)
 
 
+LAB_SECRET_KEY = "change-me-lab-only-not-for-production"
+
+
 def _as_bool(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _teams_format(value: str | None) -> str:
+    text = (value or "adaptive").strip().lower()
+    if text not in {"adaptive", "messagecard"}:
+        raise ValueError("TEAMS_WEBHOOK_FORMAT must be 'adaptive' or 'messagecard'.")
+    return text
 
 
 def _as_int(value: str | None, default: int) -> int:
@@ -64,6 +75,12 @@ class Settings:
     servicenow_state_cancelled: str
     servicenow_close_code: str
     servicenow_http_timeout: int
+    public_url: str
+    teams_enabled: bool
+    teams_dry_run: bool
+    teams_webhook_url: str
+    teams_webhook_format: str
+    teams_http_timeout: int
     cisco_restconf_port: int
     cisco_restconf_verify_tls: bool
     cisco_netconf_port: int
@@ -71,6 +88,16 @@ class Settings:
     cisco_snmp_community: str
     cisco_snmp_port: int
     cisco_connect_timeout: int
+    data_key: str
+    csrf_enabled: bool
+    login_rate_limit: bool
+    cookie_secure: bool
+    session_max_age: int
+    trust_x_forwarded_for: bool
+    require_hardened: bool
+    allowed_hosts: tuple[str, ...]
+    bootstrap_username: str
+    bootstrap_password: str
     log_level: str
     diagnostics: bool
     open_access: bool
@@ -80,8 +107,27 @@ class Settings:
         return self.servicenow_enabled and not self.servicenow_dry_run
 
     @property
+    def teams_live(self) -> bool:
+        return self.teams_enabled and not self.teams_dry_run
+
+    @property
     def bind_is_all_interfaces(self) -> bool:
         return self.host in {"0.0.0.0", "::"}
+
+    @property
+    def show_lab_credentials(self) -> bool:
+        """Login page / stdout may print lab passwords only in first-run lab mode."""
+        return (not self.require_hardened) and self.secret_key == LAB_SECRET_KEY
+
+    @property
+    def trusted_hosts_enabled(self) -> bool:
+        return "*" not in self.allowed_hosts
+
+    @property
+    def public_hostname(self) -> str:
+        if not self.public_url:
+            return ""
+        return (urlparse(self.public_url).hostname or "").strip().lower()
 
 
 def get_settings() -> Settings:
@@ -113,10 +159,10 @@ def get_settings() -> Settings:
     if driver not in {"simulator", "cisco_iosxe"}:
         raise ValueError("SWITCHEROO_DRIVER must be 'simulator' or 'cisco_iosxe'.")
 
-    secret = os.getenv("SWITCHEROO_SECRET_KEY") or "change-me-lab-only-not-for-production"
-    if not testing and secret == "change-me-lab-only-not-for-production":
-        # Allowed for first-run lab; called out in README and the login page.
-        pass
+    secret = os.getenv("SWITCHEROO_SECRET_KEY") or LAB_SECRET_KEY
+    public_url = (os.getenv("SWITCHEROO_PUBLIC_URL") or "").strip().rstrip("/")
+    cookie_secure = _as_bool(os.getenv("SWITCHEROO_COOKIE_SECURE"), public_url.startswith("https://"))
+    require_hardened = _as_bool(os.getenv("SWITCHEROO_REQUIRE_HARDENED"), False)
 
     return Settings(
         testing=testing,
@@ -150,6 +196,12 @@ def get_settings() -> Settings:
         servicenow_state_cancelled=(os.getenv("SERVICENOW_STATE_CANCELLED") or "8").strip(),
         servicenow_close_code=(os.getenv("SERVICENOW_CLOSE_CODE") or "Solved (Permanently)").strip(),
         servicenow_http_timeout=max(1, min(15, _as_int(os.getenv("SERVICENOW_HTTP_TIMEOUT"), 10))),
+        public_url=public_url,
+        teams_enabled=_as_bool(os.getenv("TEAMS_ENABLED"), False),
+        teams_dry_run=_as_bool(os.getenv("TEAMS_DRY_RUN"), True),
+        teams_webhook_url=(os.getenv("TEAMS_WEBHOOK_URL") or "").strip(),
+        teams_webhook_format=_teams_format(os.getenv("TEAMS_WEBHOOK_FORMAT")),
+        teams_http_timeout=max(1, min(15, _as_int(os.getenv("TEAMS_HTTP_TIMEOUT"), 10))),
         cisco_restconf_port=_as_int(os.getenv("CISCO_RESTCONF_PORT"), 443),
         cisco_restconf_verify_tls=_as_bool(os.getenv("CISCO_RESTCONF_VERIFY_TLS"), True),
         cisco_netconf_port=_as_int(os.getenv("CISCO_NETCONF_PORT"), 830),
@@ -157,9 +209,39 @@ def get_settings() -> Settings:
         cisco_snmp_community=os.getenv("CISCO_SNMP_COMMUNITY") or "",
         cisco_snmp_port=_as_int(os.getenv("CISCO_SNMP_PORT"), 161),
         cisco_connect_timeout=_as_int(os.getenv("CISCO_CONNECT_TIMEOUT"), 10),
+        data_key=(os.getenv("SWITCHEROO_DATA_KEY") or "").strip(),
+        csrf_enabled=_as_bool(os.getenv("SWITCHEROO_CSRF"), not testing),
+        login_rate_limit=_as_bool(os.getenv("SWITCHEROO_LOGIN_RATE_LIMIT"), not testing),
+        cookie_secure=cookie_secure,
+        session_max_age=max(300, min(86400, _as_int(os.getenv("SWITCHEROO_SESSION_MAX_AGE"), 28800))),
+        trust_x_forwarded_for=_as_bool(os.getenv("SWITCHEROO_TRUST_X_FORWARDED_FOR"), False),
+        require_hardened=require_hardened,
+        allowed_hosts=_parse_allowed_hosts(
+            os.getenv("SWITCHEROO_ALLOWED_HOSTS"),
+            testing=testing,
+            require_hardened=require_hardened,
+        ),
+        bootstrap_username=(os.getenv("SWITCHEROO_BOOTSTRAP_USERNAME") or "networks").strip() or "networks",
+        bootstrap_password=os.getenv("SWITCHEROO_BOOTSTRAP_PASSWORD") or "",
         log_level=(os.getenv("SWITCHEROO_LOG_LEVEL") or "INFO").strip().upper() or "INFO",
         diagnostics=_as_bool(os.getenv("SWITCHEROO_DIAGNOSTICS"), False),
         # Lab default: every signed-in user sees every switch. Set false to
         # enforce the CS grant table (user_switch_permissions) again.
         open_access=_as_bool(os.getenv("SWITCHEROO_OPEN_ACCESS"), True),
     )
+
+
+def _parse_allowed_hosts(
+    raw: str | None, *, testing: bool, require_hardened: bool
+) -> tuple[str, ...]:
+    """Lab default is '*' (TrustedHost off). Hardened deploys must set an explicit list."""
+    if raw is None or raw.strip() == "":
+        if require_hardened:
+            return ()
+        if testing:
+            return ("testserver", "test", "localhost", "127.0.0.1", "[::1]")
+        return ("*",)
+    hosts = tuple(part.strip() for part in raw.split(",") if part.strip())
+    if testing and "*" not in hosts and "testserver" not in {h.lower() for h in hosts}:
+        hosts = hosts + ("testserver", "test")
+    return hosts

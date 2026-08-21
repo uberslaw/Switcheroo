@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Security checklist · Switcheroo{% endblock %}
+{% block body %}
+<div class="help-layout">
+  <aside class="help-side">
+    <p class="tiny">Help</p>
+    <a href="/help">Using Switcheroo</a>
+    <a href="/help/security" class="active">Security checklist</a>
+  </aside>
+  <div>
+    <div class="page-head">
+      <div>
+        <h1>Security checklist</h1>
+        <p class="muted">
+          What shipped in this release, what this process still needs before a shared deploy, and what is honestly still open.
+          Secret values are never shown here.
+        </p>
+      </div>
+    </div>
+
+    <div class="check-summary">
+      <span class="stat up"><i></i>{{ report.done_count }} done</span>
+      <span class="stat shut"><i></i>{{ report.action_count }} need action on this host</span>
+      <span class="stat down"><i></i>{{ report.open_count }} still open</span>
+      <span class="muted">Bind {{ report.bind }}{% if report.lab_mode %} · lab mode{% endif %}</span>
+    </div>
+
+    {% if report.lab_mode %}
+    <div class="flash flash-error">This process is not in hardened mode. Treat it as a lab first-run until the “This host still needs” items are green and <code>SWITCHEROO_REQUIRE_HARDENED=true</code>.</div>
+    {% endif %}
+
+    {% for section in report.sections %}
+    <section class="panel" id="{{ section.id }}">
+      <h2>{{ section.title }}</h2>
+      <p class="muted">{{ section.blurb }}</p>
+      <div class="table-wrap">
+        <table class="ports check-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Item</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in section.items %}
+            <tr>
+              <td>
+                {% if item.status == 'done' %}
+                <span class="source source-executed">Done</span>
+                {% elif item.status == 'action' %}
+                <span class="source source-pending">Needs action</span>
+                {% else %}
+                <span class="source source-rejected">Still open</span>
+                {% endif %}
+              </td>
+              <td>{{ item.title }}</td>
+              <td class="muted">{{ item.detail }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

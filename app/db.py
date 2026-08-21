@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
+from app.filesec import restrict_private_file, sqlite_filesystem_path
 
 
 class Base(DeclarativeBase):
@@ -43,6 +44,9 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _migrate_sqlite()
+    db_path = sqlite_filesystem_path(get_settings().database_url)
+    if db_path is not None:
+        restrict_private_file(db_path)
 
 
 def _migrate_sqlite() -> None:
@@ -90,6 +94,8 @@ def _migrate_sqlite() -> None:
             "servicenow_correlation_id": "VARCHAR(128)",
             "auto_approved": "INTEGER DEFAULT 0",
             "auto_approve_reason": "VARCHAR(256)",
+            "acknowledged_by_id": "INTEGER",
+            "acknowledged_at": "DATETIME",
             "reason": "TEXT",
             "windows_account": "VARCHAR(256)",
             "sn_req_number": "VARCHAR(64)",
@@ -101,6 +107,31 @@ def _migrate_sqlite() -> None:
             for col, typ in alters.items():
                 if col not in req_names:
                     conn.execute(text(f"ALTER TABLE change_requests ADD COLUMN {col} {typ}"))
+        sw_rows = conn.execute(text("PRAGMA table_info(switches)")).fetchall()
+        sw_names = {row[1] for row in sw_rows}
+        if sw_names and "monitoring_enabled" not in sw_names:
+            conn.execute(text("ALTER TABLE switches ADD COLUMN monitoring_enabled INTEGER DEFAULT 1"))
+    _encrypt_legacy_switch_passwords()
+
+
+def _encrypt_legacy_switch_passwords() -> None:
+    """Rewrite plaintext TACACS/device passwords to enc:v1: blobs."""
+    from sqlalchemy import select
+
+    from app.crypto import PREFIX, store_secret
+    from app.models import Switch
+
+    db = SessionLocal()
+    try:
+        changed = 0
+        for switch in db.scalars(select(Switch)).all():
+            if switch.password and not switch.password.startswith(PREFIX):
+                switch.password = store_secret(switch.password)
+                changed += 1
+        if changed:
+            db.commit()
+    finally:
+        db.close()
 
 
 def get_db() -> Generator[Session, None, None]:

@@ -5,6 +5,7 @@ from logging.handlers import RotatingFileHandler
 
 from app.config import Settings
 from app.diagnostics import desired_log_level, sync_log_level
+from app.filesec import restrict_private_file
 
 
 def setup_logging(settings: Settings) -> None:
@@ -33,3 +34,4 @@ def setup_logging(settings: Settings) -> None:
     root.addHandler(console)
     sync_log_level()
     logging.getLogger("switcheroo").info("Logging to %s", settings.log_file)
+    restrict_private_file(settings.log_file)

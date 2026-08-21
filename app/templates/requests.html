@@ -6,8 +6,8 @@
     <h1>Change requests</h1>
     <p class="muted">
       Past and present VLAN (and other) requests.
-      {% if user.role == 'networks' %}All offices.{% else %}Offices / switches you support.{% endif %}
-      CS cannot approve here — Networks uses the approval queue.
+      {% if user.role == 'networks' %}All offices. Pending rows can be accepted or rejected here.{% else %}Offices / switches you support.{% endif %}
+      CS cannot approve here.
     </p>
   </div>
   {% if user.role == 'networks' %}
@@ -66,11 +66,12 @@
       <th>Decided by</th>
       <th>Decided</th>
       <th>RITM / REQ</th>
+      {% if user.role == 'networks' %}<th>Decide</th>{% endif %}
     </tr>
   </thead>
   <tbody>
     {% for r in rows %}
-    <tr>
+    <tr class="request-row" id="request-{{ r.id }}">
       <td>{{ r.created_at|dt }}</td>
       <td>{{ r.requester.username }}</td>
       <td class="mono">{{ r.windows_account or "—" }}</td>
@@ -109,6 +110,9 @@
         {% else %}
         <span class="source source-{{ r.status }}">{{ r.status }}</span>
         {% endif %}
+        {% if r.status == 'pending' and r.acknowledged_by %}
+        <div><span class="source source-claimed">On it: {{ r.acknowledged_by.username }}</span></div>
+        {% endif %}
       </td>
       <td>
         {% if r.auto_approved %}Policy
@@ -127,9 +131,36 @@
         {{ r.servicenow_ticket or "—" }}
         {% endif %}
       </td>
+      {% if user.role == 'networks' %}
+      <td>
+        {% if r.status == 'pending' %}
+        {% if not r.acknowledged_by %}
+        <form method="post" action="/requests/{{ r.id }}/ack" class="stack-tight">
+          <button class="btn btn-small" type="submit">I'm on it</button>
+        </form>
+        {% elif r.acknowledged_by_id == user.id %}
+        <form method="post" action="/requests/{{ r.id }}/ack/release" class="stack-tight">
+          <button class="btn btn-small" type="submit">Release</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/admin/approvals/{{ r.id }}/approve" class="stack-tight">
+          <input type="hidden" name="next" value="/requests?status=pending">
+          <input name="note" placeholder="optional note">
+          <button class="btn btn-small btn-primary" type="submit">Approve &amp; run</button>
+        </form>
+        <form method="post" action="/admin/approvals/{{ r.id }}/reject" class="stack-tight">
+          <input type="hidden" name="next" value="/requests?status=pending">
+          <input name="note" required placeholder="reject reason (required)">
+          <button class="btn btn-small" type="submit">Reject</button>
+        </form>
+        {% else %}
+        —
+        {% endif %}
+      </td>
+      {% endif %}
     </tr>
     {% else %}
-    <tr><td colspan="12" class="muted">No requests match these filters.</td></tr>
+    <tr><td colspan="{% if user.role == 'networks' %}13{% else %}12{% endif %}" class="muted">No requests match these filters.</td></tr>
     {% endfor %}
   </tbody>
 </table>

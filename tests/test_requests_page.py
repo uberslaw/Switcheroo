@@ -44,10 +44,53 @@ def test_cs_limited_only_sees_permitted_switch(client, seeded_db, closed_access)
     assert "CS-BLD-A-AS01" in page.text
     assert "CS-BLD-B-AS01" not in page.text
     assert "Approval queue" not in page.text
+    assert "Approve &amp; run" not in page.text
+    assert "Approve & run" not in page.text
     pending = client.get("/requests?status=pending")
     assert pending.status_code == 200
     assert "CS-BLD-A-AS01" in pending.text
     assert "CS-BLD-B-AS01" not in pending.text
+
+
+def test_networks_can_approve_from_requests_page(client, seeded_db):
+    port = first_port(seeded_db)
+    cs = seeded_db.scalar(select(User).where(User.username == "cs"))
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
+    seeded_db.commit()
+    client.post("/login", data={"username": "networks", "password": "networks"}, follow_redirects=False)
+    page = client.get("/requests?status=pending")
+    assert page.status_code == 200
+    assert f'id="request-{req.id}"' in page.text
+    assert "Approve &amp; run" in page.text
+    assert f"/admin/approvals/{req.id}/approve" in page.text
+    response = client.post(
+        f"/admin/approvals/{req.id}/approve",
+        data={"note": "ok", "next": "/requests?status=pending"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/requests?status=pending"
+    seeded_db.refresh(req)
+    assert req.status == "executed"
+    seeded_db.refresh(port)
+    assert port.vlan_id == 50
+
+
+def test_networks_reject_from_requests_ignores_external_next(client, seeded_db):
+    port = first_port(seeded_db)
+    cs = seeded_db.scalar(select(User).where(User.username == "cs"))
+    req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason="Need guest VLAN for visitor laptop")
+    seeded_db.commit()
+    client.post("/login", data={"username": "networks", "password": "networks"}, follow_redirects=False)
+    response = client.post(
+        f"/admin/approvals/{req.id}/reject",
+        data={"note": "not now", "next": "https://evil.example/phish"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/admin/approvals"
+    seeded_db.refresh(req)
+    assert req.status == "rejected"
 
 
 def test_pending_vlan_pane_shows_dry_run_ticket(client, seeded_db):

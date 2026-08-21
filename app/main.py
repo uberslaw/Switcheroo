@@ -4,19 +4,22 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app import __version__
 from app.config import get_settings
+from app.csrf import CSRFMiddleware
 from app.db import SessionLocal, init_db
 from app.diagnostics import clear_pid_file, sync_log_level, write_pid_file
 from app.logging_setup import setup_logging
 from app.poller import start_poller, stop_poller
 from app.prereq import check_prerequisites
 from app.routers import admin, api, pages, racks
-from app.seed import seed
+from app.security_headers import SecurityHeadersMiddleware
+from app.seed import ensure_hardened_users, seed
 
 log = logging.getLogger("switcheroo")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -32,6 +35,7 @@ async def lifespan(_app: FastAPI):
     db = SessionLocal()
     try:
         result = seed(db)
+        ensure_hardened_users(db)
         log.info("Seed complete (new users=%s new switches=%s)", result["users"], result["switches"])
     finally:
         db.close()
@@ -54,7 +58,17 @@ async def lifespan(_app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     application = FastAPI(title="Switcheroo", lifespan=lifespan, docs_url=None, redoc_url=None)
-    application.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax")
+    application.add_middleware(CSRFMiddleware)
+    application.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.secret_key,
+        same_site="lax",
+        https_only=settings.cookie_secure,
+        max_age=settings.session_max_age,
+    )
+    application.add_middleware(SecurityHeadersMiddleware)
+    if settings.trusted_hosts_enabled:
+        application.add_middleware(TrustedHostMiddleware, allowed_hosts=list(settings.allowed_hosts))
     application.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     application.include_router(pages.router)
     application.include_router(api.router)
@@ -75,11 +89,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-
-
-@app.middleware("http")
-async def no_cache_partials(request: Request, call_next):
-    response = await call_next(request)
-    if request.url.path.startswith("/partials") or request.headers.get("HX-Request"):
-        response.headers["Cache-Control"] = "no-store"
-    return response

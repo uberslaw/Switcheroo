@@ -9,7 +9,7 @@ from app.db import get_db
 from app.models import REQUEST_BOUNCE, REQUEST_NO_SHUTDOWN, REQUEST_VLAN, Port, User
 from app.services.cooldown import CooldownActive
 from app.services.request_service import RequestError, create_request
-from app.services.switch_service import PermissionDenied, get_switch_for_user, refresh_port
+from app.services.switch_service import MonitoringOff, PermissionDenied, get_switch_for_user, refresh_port
 from app.templating import flash, render
 
 router = APIRouter()
@@ -54,6 +54,9 @@ def on_demand_refresh(
     except CooldownActive as exc:
         db.rollback()
         flash(request, f"Shared cooldown: try again in {exc.remaining}s. This is per port, not per user.", "error")
+    except MonitoringOff as exc:
+        db.rollback()
+        flash(request, str(exc), "error")
     except Exception as exc:  # noqa: BLE001
         db.commit()
         flash(request, f"Refresh failed: {exc}", "error")

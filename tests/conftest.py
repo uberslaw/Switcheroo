@@ -21,6 +21,10 @@ os.environ["SERVICENOW_DRY_RUN"] = "true"
 os.environ["SERVICENOW_INSTANCE"] = ""
 os.environ["SERVICENOW_USERNAME"] = ""
 os.environ["SERVICENOW_PASSWORD"] = ""
+os.environ["TEAMS_ENABLED"] = "false"
+os.environ["TEAMS_DRY_RUN"] = "true"
+os.environ["TEAMS_WEBHOOK_URL"] = ""
+os.environ["SWITCHEROO_PUBLIC_URL"] = "http://switcheroo.test"
 # Default matches lab: every signed-in user sees every switch.
 os.environ.setdefault("SWITCHEROO_OPEN_ACCESS", "true")
 
@@ -32,14 +36,22 @@ from sqlalchemy import select
 _REAL_HTTPX_REQUEST = httpx.Client.request
 
 
-def _block_live_servicenow(self, method, url, *args, **kwargs):
-    target = str(url)
-    if "service-now.com" in target.lower():
-        raise AssertionError(f"Blocked live ServiceNow HTTP in tests: {method} {target}")
+def _block_live_outbound(self, method, url, *args, **kwargs):
+    target = str(url).lower()
+    blocked = (
+        "service-now.com",
+        "webhook.office.com",
+        "logic.azure.com",
+        "powerplatform.com",
+        "outlook.office.com",
+        "outlook.office365.com",
+    )
+    if any(part in target for part in blocked):
+        raise AssertionError(f"Blocked live HTTP in tests: {method} {url}")
     return _REAL_HTTPX_REQUEST(self, method, url, *args, **kwargs)
 
 
-httpx.Client.request = _block_live_servicenow  # type: ignore[method-assign]
+httpx.Client.request = _block_live_outbound  # type: ignore[method-assign]
 
 from app.auth import hash_password
 from app.db import Base, SessionLocal, engine, init_db
@@ -59,11 +71,13 @@ def _clean_db():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     simulator.reset()
-    dry = TMP / "servicenow-dryrun"
-    if dry.exists():
-        for path in dry.glob("*.json"):
-            path.unlink()
-    flag = get_settings().data_dir / "diagnostics.enabled"
+    data_dir = get_settings().data_dir
+    for folder_name in ("servicenow-dryrun", "teams-dryrun"):
+        folder = data_dir / folder_name
+        if folder.exists():
+            for path in folder.glob("*.json"):
+                path.unlink()
+    flag = data_dir / "diagnostics.enabled"
     if flag.exists():
         flag.unlink()
     sync_log_level()

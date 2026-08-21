@@ -5,7 +5,9 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth import hash_password, require_networks, require_user
+from app.audit import audit
+from app.auth import hash_password, password_meets_policy, require_networks, require_user, safe_next_path
+from app.crypto import store_secret
 from app.db import get_db
 from app.drivers.simulator import simulator
 from app.models import (
@@ -26,9 +28,15 @@ from app.services.auto_approve import global_key, is_enabled, office_key, reques
 from app.services.office import switch_sort_key, switches_grouped_by_office
 from app.services import rack_design as rd
 from app.services.request_service import RequestError, approve_request, reject_request
+from app.services.switch_service import delete_switch, set_monitoring
 from app.templating import flash, render
 
 router = APIRouter(prefix="/admin")
+
+
+def _safe_next(raw: str | None, default: str = "/admin/approvals") -> str:
+    """Allow only same-origin relative paths so approve/reject can return to /requests."""
+    return safe_next_path(raw, default)
 
 
 def _admin(request: Request, db: Session = Depends(get_db)) -> User:
@@ -103,8 +111,9 @@ def switch_create(
         location=location.strip(),
         notes=notes.strip(),
         username=username.strip() or None,
-        password=password or None,
+        password=store_secret(password) if password else None,
         driver_override=override,
+        monitoring_enabled=True,
     )
     _apply_stack_fields(
         switch,
@@ -147,6 +156,7 @@ def switch_update(
     username: str = Form(""),
     password: str = Form(""),
     driver_override: str = Form(""),
+    monitoring_enabled: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(_admin),
 ):
@@ -170,10 +180,83 @@ def switch_update(
     if username.strip():
         switch.username = username.strip()
     if password:
-        switch.password = password
+        switch.password = store_secret(password)
     switch.driver_override = driver_override.strip() or None
+    set_monitoring(switch, monitoring_enabled == "1")
     db.commit()
     flash(request, "Switch updated.", "ok")
+    return RedirectResponse("/admin/inventory", status_code=303)
+
+
+@router.post("/switches/{switch_id}/monitoring")
+def switch_monitoring(
+    switch_id: int,
+    request: Request,
+    enabled: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    switch = db.get(Switch, switch_id)
+    if switch is None:
+        flash(request, "Switch not found.", "error")
+        return RedirectResponse("/admin/inventory", status_code=303)
+    on = enabled == "1"
+    set_monitoring(switch, on)
+    db.commit()
+    audit("switch_monitoring", switch=switch.name, enabled=on, actor=user.username)
+    if on:
+        flash(request, f"Monitoring resumed for {switch.name}. Status polls will include this box.", "ok")
+    else:
+        flash(
+            request,
+            f"Monitoring paused for {switch.name}. Status, daily, and on-demand polls skip it until you resume.",
+            "ok",
+        )
+    return RedirectResponse("/admin/inventory", status_code=303)
+
+
+@router.get("/switches/{switch_id}/delete")
+def switch_delete_page(
+    switch_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(_admin)
+):
+    switch = db.get(Switch, switch_id)
+    if switch is None:
+        flash(request, "Switch not found.", "error")
+        return RedirectResponse("/admin/inventory", status_code=303)
+    pending = db.scalar(
+        select(ChangeRequest).where(
+            ChangeRequest.switch_id == switch.id,
+            ChangeRequest.status == STATUS_PENDING,
+        )
+    )
+    return render(
+        request,
+        "admin/switch_delete.html",
+        user=user,
+        switch=switch,
+        has_pending=pending is not None,
+    )
+
+
+@router.post("/switches/{switch_id}/delete")
+def switch_delete(
+    switch_id: int,
+    request: Request,
+    confirm_name: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    switch = db.get(Switch, switch_id)
+    if switch is None:
+        flash(request, "Switch not found.", "error")
+        return RedirectResponse("/admin/inventory", status_code=303)
+    if confirm_name.strip() != switch.name:
+        flash(request, f"Type the switch name {switch.name} exactly to delete it.", "error")
+        return RedirectResponse(f"/admin/switches/{switch_id}/delete", status_code=303)
+    name = delete_switch(db, switch)
+    db.commit()
+    audit("switch_deleted", switch=name, actor=user.username)
+    flash(request, f"Deleted {name} and stopped monitoring it.", "ok")
     return RedirectResponse("/admin/inventory", status_code=303)
 
 
@@ -292,13 +375,15 @@ def approval_approve(
     request_id: int,
     request: Request,
     note: str = Form(""),
+    next: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(_admin),
 ):
+    dest = _safe_next(next)
     req = db.get(ChangeRequest, request_id)
     if req is None:
         flash(request, "Request not found.", "error")
-        return RedirectResponse("/admin/approvals", status_code=303)
+        return RedirectResponse(dest, status_code=303)
     try:
         approve_request(db, req, user, note)
         db.commit()
@@ -309,7 +394,7 @@ def approval_approve(
     except RequestError as exc:
         db.rollback()
         flash(request, str(exc), "error")
-    return RedirectResponse("/admin/approvals", status_code=303)
+    return RedirectResponse(dest, status_code=303)
 
 
 @router.post("/approvals/{request_id}/reject")
@@ -317,13 +402,15 @@ def approval_reject(
     request_id: int,
     request: Request,
     note: str = Form(...),
+    next: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(_admin),
 ):
+    dest = _safe_next(next)
     req = db.get(ChangeRequest, request_id)
     if req is None:
         flash(request, "Request not found.", "error")
-        return RedirectResponse("/admin/approvals", status_code=303)
+        return RedirectResponse(dest, status_code=303)
     try:
         reject_request(db, req, user, note)
         db.commit()
@@ -331,7 +418,7 @@ def approval_reject(
     except RequestError as exc:
         db.rollback()
         flash(request, str(exc), "error")
-    return RedirectResponse("/admin/approvals", status_code=303)
+    return RedirectResponse(dest, status_code=303)
 
 
 @router.get("/policies")
@@ -472,6 +559,9 @@ def user_create(
     if db.scalar(select(User).where(User.username == username.strip())):
         flash(request, "Username already exists.", "error")
         return RedirectResponse("/admin/permissions", status_code=303)
+    if not password_meets_policy(password):
+        flash(request, "Password must be at least 10 characters.", "error")
+        return RedirectResponse("/admin/permissions", status_code=303)
     db.add(
         User(
             username=username.strip(),
@@ -481,6 +571,7 @@ def user_create(
         )
     )
     db.commit()
+    audit("user_created", username=username.strip()[:64], role=role, actor=user.username)
     flash(request, f"Created user {username.strip()}.", "ok")
     return RedirectResponse("/admin/permissions", status_code=303)
 

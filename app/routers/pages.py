@@ -9,9 +9,12 @@ from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth import authenticate, require_user, user_from_request
+from app.audit import audit
+from app.auth import authenticate, require_networks, require_user, safe_next_path, user_from_request
 from app.config import get_settings
+from app.csrf import ensure_csrf_token
 from app.db import get_db
+from app.rate_limit import clear_login_failures, client_ip, login_is_blocked, record_login_failure
 from app.models import (
     PORT_PURPOSES,
     ROLE_NETWORKS,
@@ -40,8 +43,15 @@ from app.services.patching import (
     stack_for_outlet,
     stack_key,
 )
-from app.services.request_service import pending_vlan_request
+from app.security_checklist import build_security_report
+from app.services.request_service import (
+    RequestError,
+    acknowledge_request,
+    pending_vlan_request,
+    release_acknowledgement,
+)
 from app.services.switch_service import (
+    MonitoringOff,
     PermissionDenied,
     TroubleshootConflict,
     active_session_for_user,
@@ -155,10 +165,11 @@ def _workspace_context(db: Session, user: User, switch: Switch, selected_id: int
 
 
 @router.get("/login")
-def login_page(request: Request, db: Session = Depends(get_db)):
+def login_page(request: Request, db: Session = Depends(get_db), next: str = ""):
+    dest = safe_next_path(next, "/")
     if user_from_request(db, request):
-        return RedirectResponse("/", status_code=303)
-    return render(request, "login.html", user=None)
+        return RedirectResponse(dest, status_code=303)
+    return render(request, "login.html", user=None, next_path="" if dest == "/" else dest)
 
 
 @router.post("/login")
@@ -166,20 +177,45 @@ def login_submit(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
+    next: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    dest = safe_next_path(next, "/")
+    ip = client_ip(request)
+    if login_is_blocked(ip):
+        flash(request, "Too many sign-in attempts. Try again in 15 minutes.", "error")
+        return render(request, "login.html", user=None, next_path="" if dest == "/" else dest, status_code=429)
     user = authenticate(db, username.strip(), password)
     if user is None:
+        record_login_failure(ip)
+        audit("login_failure", username=username.strip()[:64], ip=ip)
         flash(request, "Unknown user or bad password.", "error")
-        return render(request, "login.html", user=None, status_code=401)
+        return render(request, "login.html", user=None, next_path="" if dest == "/" else dest, status_code=401)
+    clear_login_failures(ip)
+    request.session.clear()
     request.session["user_id"] = user.id
-    return RedirectResponse("/", status_code=303)
+    ensure_csrf_token(request)
+    audit("login_success", username=user.username, user_id=user.id, ip=ip)
+    return RedirectResponse(dest, status_code=303)
 
 
 @router.post("/logout")
 def logout(request: Request):
+    user_id = request.session.get("user_id")
+    audit("logout", user_id=user_id, ip=client_ip(request))
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
+
+
+@router.get("/help")
+def help_page(request: Request, user: User = Depends(_current_user)):
+    return render(request, "help.html", user=user)
+
+
+@router.get("/help/security")
+def help_security(request: Request, db: Session = Depends(get_db), user: User = Depends(_current_user)):
+    report = build_security_report(db)
+    return render(request, "help_security.html", user=user, report=report)
 
 
 @router.get("/")
@@ -573,6 +609,9 @@ def start_ts(
     except TroubleshootConflict as exc:
         db.rollback()
         flash(request, str(exc), "error")
+    except MonitoringOff as exc:
+        db.rollback()
+        flash(request, str(exc), "error")
     return RedirectResponse(f"/switches/{switch_id}?port={port_id}", status_code=303)
 
 
@@ -680,6 +719,68 @@ def review_requests(
         offices=offices if user.role != ROLE_NETWORKS else sorted({s.location for s in all_switches if s.location}),
         filters={"status": status, "switch_id": switch_id or "", "office": office, "date_from": date_from, "date_to": date_to},
     )
+
+
+@router.get("/requests/{request_id}/ack")
+def acknowledge_page(
+    request_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_current_user),
+):
+    req = db.get(ChangeRequest, request_id)
+    if req is None:
+        flash(request, "Request not found.", "error")
+        return RedirectResponse("/requests", status_code=303)
+    return render(request, "ack.html", user=user, req=req)
+
+
+@router.post("/requests/{request_id}/ack")
+def acknowledge_submit(
+    request_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_current_user),
+):
+    require_networks(user)
+    req = db.get(ChangeRequest, request_id)
+    if req is None:
+        flash(request, "Request not found.", "error")
+        return RedirectResponse("/requests", status_code=303)
+    try:
+        acknowledge_request(db, req, user)
+        db.commit()
+        flash(
+            request,
+            f"You acknowledged request #{req.id}. The Teams channel has been told you are on it.",
+            "ok",
+        )
+    except RequestError as exc:
+        db.rollback()
+        flash(request, str(exc), "error")
+    return RedirectResponse(f"/requests/{request_id}/ack", status_code=303)
+
+
+@router.post("/requests/{request_id}/ack/release")
+def acknowledge_release(
+    request_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_current_user),
+):
+    require_networks(user)
+    req = db.get(ChangeRequest, request_id)
+    if req is None:
+        flash(request, "Request not found.", "error")
+        return RedirectResponse("/requests", status_code=303)
+    try:
+        release_acknowledgement(db, req, user)
+        db.commit()
+        flash(request, f"Released request #{request_id}. Someone else can pick it up.", "ok")
+    except RequestError as exc:
+        db.rollback()
+        flash(request, str(exc), "error")
+    return RedirectResponse(f"/requests/{request_id}/ack", status_code=303)
 
 
 @router.get("/export.xlsx")

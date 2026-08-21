@@ -4,7 +4,7 @@ import logging
 from datetime import timedelta
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -17,6 +17,7 @@ from app.models import (
     SOURCE_LIVE,
     SOURCE_TROUBLESHOOT,
     SOURCE_WRITE,
+    ChangeRequest,
     Port,
     Switch,
     TroubleshootingSession,
@@ -39,27 +40,48 @@ class TroubleshootConflict(Exception):
     pass
 
 
+class MonitoringOff(Exception):
+    """Switch is in inventory but status/daily/on-demand polling is paused."""
+
+
 def _skip_cs_grants() -> bool:
     return get_settings().open_access
 
 
 def visible_switches(db: Session, user: User) -> list[Switch]:
-    if user.role == ROLE_NETWORKS or _skip_cs_grants():
+    if user.role == ROLE_NETWORKS:
         return list(db.scalars(select(Switch).order_by(Switch.name)).all())
+    # Pausing is a monitoring state, not a grant, so CS never sees a paused
+    # switch even when open access is skipping the grant table.
+    if _skip_cs_grants():
+        return monitored_switches(db)
     rows = db.scalars(
         select(Switch)
         .join(UserSwitchPermission, UserSwitchPermission.switch_id == Switch.id)
-        .where(UserSwitchPermission.user_id == user.id)
+        .where(
+            UserSwitchPermission.user_id == user.id,
+            Switch.monitoring_enabled.is_(True),
+        )
         .order_by(Switch.name)
     ).all()
     return list(rows)
+
+
+def monitored_switches(db: Session) -> list[Switch]:
+    return list(
+        db.scalars(select(Switch).where(Switch.monitoring_enabled.is_(True)).order_by(Switch.name)).all()
+    )
 
 
 def get_switch_for_user(db: Session, user: User, switch_id: int) -> Switch:
     switch = db.get(Switch, switch_id)
     if switch is None:
         raise PermissionDenied("Switch not found")
-    if user.role == ROLE_NETWORKS or _skip_cs_grants():
+    if user.role == ROLE_NETWORKS:
+        return switch
+    if not switch.monitoring_enabled:
+        raise PermissionDenied("You do not have access to this switch")
+    if _skip_cs_grants():
         return switch
     allowed = db.scalar(
         select(UserSwitchPermission).where(
@@ -104,7 +126,9 @@ def apply_details(port: Port, details: InterfaceDetails, source: str) -> None:
 
 
 def poll_switch_status(db: Session, switch: Switch) -> None:
-    """Targeted ifOperStatus for configured ports only."""
+    """Targeted ifOperStatus for configured ports only. No-op when monitoring is paused."""
+    if not switch.monitoring_enabled:
+        return
     ports = list(db.scalars(select(Port).where(Port.switch_id == switch.id).order_by(Port.if_index)).all())
     if not ports:
         switch.last_status_poll_at = utcnow()
@@ -132,6 +156,8 @@ def poll_switch_status(db: Session, switch: Switch) -> None:
 
 
 def poll_switch_daily(db: Session, switch: Switch) -> None:
+    if not switch.monitoring_enabled:
+        return
     ports = list(db.scalars(select(Port).where(Port.switch_id == switch.id).order_by(Port.if_index)).all())
     driver = get_driver(switch)
     errors: list[str] = []
@@ -149,6 +175,8 @@ def poll_switch_daily(db: Session, switch: Switch) -> None:
 
 
 def refresh_port(db: Session, port: Port, source: str = SOURCE_LIVE, honor_cooldown: bool = True) -> Port:
+    if not port.switch.monitoring_enabled:
+        raise MonitoringOff("Monitoring is paused for this switch. Networks can resume it under Inventory.")
     if honor_cooldown:
         assert_can_refresh(port)
     driver = get_driver(port.switch)
@@ -177,6 +205,8 @@ def active_session_for_user(db: Session, user_id: int) -> Optional[Troubleshooti
 
 
 def start_troubleshooting(db: Session, user: User, port: Port) -> TroubleshootingSession:
+    if not port.switch.monitoring_enabled:
+        raise MonitoringOff("Monitoring is paused for this switch. Resume it under Inventory before troubleshooting.")
     existing = active_session_for_user(db, user.id)
     if existing is not None:
         raise TroubleshootConflict(
@@ -224,6 +254,9 @@ def tick_troubleshooting(db: Session) -> None:
         if port is None:
             stop_troubleshooting(session)
             continue
+        if port.switch is None or not port.switch.monitoring_enabled:
+            stop_troubleshooting(session)
+            continue
         try:
             refresh_port(db, port, source=SOURCE_TROUBLESHOOT, honor_cooldown=False)
             session.last_tick_at = now
@@ -244,3 +277,28 @@ def apply_write_to_port(port: Port, details_or_status: InterfaceDetails | None =
 
 def port_cooldown_state(port: Port) -> tuple[bool, int]:
     return can_refresh(port)
+
+
+def set_monitoring(switch: Switch, enabled: bool) -> None:
+    switch.monitoring_enabled = enabled
+    if not enabled:
+        switch.next_status_poll_at = None
+
+
+def delete_switch(db: Session, switch: Switch) -> str:
+    """Remove a switch and its ports, history, and simulator state. Networks only."""
+    from app.drivers.simulator import simulator
+
+    name = switch.name
+    switch_id = switch.id
+    for session in db.scalars(
+        select(TroubleshootingSession).where(TroubleshootingSession.switch_id == switch_id)
+    ).all():
+        if session.is_active:
+            stop_troubleshooting(session)
+        db.delete(session)
+    db.execute(delete(ChangeRequest).where(ChangeRequest.switch_id == switch_id))
+    db.execute(delete(UserSwitchPermission).where(UserSwitchPermission.switch_id == switch_id))
+    db.delete(switch)
+    simulator.drop_switch(name)
+    return name

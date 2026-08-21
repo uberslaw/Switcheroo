@@ -74,17 +74,20 @@ class Switch(Base):
     chassis_model: Mapped[str] = mapped_column(String(32), default="9300")
     notes: Mapped[str] = mapped_column(Text, default="")
     username: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    password: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    password: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     driver_override: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     last_status_poll_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_daily_poll_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     next_status_poll_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_poll_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    monitoring_enabled: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     ports: Mapped[list[Port]] = relationship(back_populates="switch", cascade="all, delete-orphan")
     vlans: Mapped[list[SwitchVlan]] = relationship(back_populates="switch", cascade="all, delete-orphan")
-    permissions: Mapped[list[UserSwitchPermission]] = relationship(back_populates="switch")
+    permissions: Mapped[list[UserSwitchPermission]] = relationship(
+        back_populates="switch", cascade="all, delete-orphan"
+    )
     patch_panels: Mapped[list["PatchPanel"]] = relationship(back_populates="switch")
 
     @property
@@ -174,12 +177,15 @@ class ChangeRequest(Base):
     sn_ritm_sys_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     auto_approved: Mapped[bool] = mapped_column(default=False)
     auto_approve_reason: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    acknowledged_by_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     executed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     requester: Mapped[User] = relationship(foreign_keys=[requester_id], back_populates="requests")
     reviewer: Mapped[Optional[User]] = relationship(foreign_keys=[reviewer_id])
+    acknowledged_by: Mapped[Optional[User]] = relationship(foreign_keys=[acknowledged_by_id])
     switch: Mapped[Switch] = relationship()
     port: Mapped[Port] = relationship()
 

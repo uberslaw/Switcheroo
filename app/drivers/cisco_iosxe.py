@@ -7,6 +7,7 @@ from urllib.parse import quote
 import httpx
 
 from app.config import get_settings
+from app.crypto import SecretError, reveal_secret
 from app.diagnostics import step
 from app.drivers.base import DriverError, DriverUnavailable
 from app.models import Switch
@@ -26,13 +27,17 @@ class CiscoIOSXEDriver:
     name = "cisco_iosxe"
 
     def _require_creds(self, switch: Switch) -> tuple[str, str, str]:
-        if not switch.management_ip or not switch.username or not switch.password:
+        try:
+            password = reveal_secret(switch.password)
+        except SecretError as exc:
+            raise DriverUnavailable(str(exc)) from exc
+        if not switch.management_ip or not switch.username or not password:
             raise DriverUnavailable(
                 f"Switch {switch.name} has no management IP or credentials; "
                 "CiscoIOSXE will not connect. Assign a dedicated TACACS/local user "
                 "or leave SWITCHEROO_DRIVER=simulator."
             )
-        return switch.management_ip, switch.username, switch.password
+        return switch.management_ip, switch.username, password
 
     def poll_interface_status(self, switch: Switch, if_names: list[str]) -> list[InterfaceStatus]:
         host, user, password = self._require_creds(switch)

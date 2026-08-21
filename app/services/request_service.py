@@ -6,9 +6,11 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.audit import audit
 from app.diagnostics import step
 from app.drivers.factory import get_driver
 from app.drivers.servicenow import ServiceNowError, servicenow
+from app.drivers.teams import TeamsError, teams
 from app.models import (
     REQUEST_BOUNCE,
     REQUEST_NO_SHUTDOWN,
@@ -58,6 +60,8 @@ def create_request(
 ) -> ChangeRequest:
     if request_type not in {REQUEST_VLAN, REQUEST_BOUNCE, REQUEST_NO_SHUTDOWN}:
         raise RequestError(f"Unknown request type: {request_type}")
+    if port.switch is not None and not port.switch.monitoring_enabled:
+        raise RequestError("Monitoring is paused for this switch. Networks can resume it under Inventory.")
     vlan_name = None
     cleaned_reason = (reason or "").strip()
     if request_type == REQUEST_VLAN:
@@ -91,6 +95,15 @@ def create_request(
     match = match_auto_approve(db, req)
     if match is not None:
         approve_request(db, req, reviewer=None, note=match.work_notes, auto_reason=match.label)
+    elif request_type == REQUEST_VLAN:
+        _teams_notify_pending(req)
+    audit(
+        "request_created",
+        request_id=req.id,
+        request_type=request_type,
+        username=requester.username,
+        auto_approved=bool(match),
+    )
     return req
 
 
@@ -155,6 +168,13 @@ def approve_request(
     req.auto_approve_reason = auto_reason
     execute_request(db, req)
     _sn_after_decision(req, approved=True)
+    audit(
+        "request_approved",
+        request_id=req.id,
+        username=reviewer.username if reviewer is not None else "auto",
+        auto=bool(auto_reason),
+        status=req.status,
+    )
     return req
 
 
@@ -168,7 +188,58 @@ def reject_request(db: Session, req: ChangeRequest, reviewer: User, note: str) -
     req.review_note = note.strip()
     req.reviewed_at = utcnow()
     _sn_after_decision(req, approved=False)
+    audit("request_rejected", request_id=req.id, username=reviewer.username)
     return req
+
+
+def acknowledge_request(db: Session, req: ChangeRequest, user: User) -> ChangeRequest:
+    """Claim a pending request so the rest of Networks does not double up."""
+    if req.status != STATUS_PENDING:
+        raise RequestError(f"Request {req.id} is {req.status}, not pending")
+    if req.acknowledged_by_id is not None:
+        if req.acknowledged_by_id == user.id:
+            return req
+        who = req.acknowledged_by.username if req.acknowledged_by is not None else str(req.acknowledged_by_id)
+        raise RequestError(f"Already acknowledged by {who}")
+    req.acknowledged_by_id = user.id
+    req.acknowledged_at = utcnow()
+    _teams_notify_acknowledged(req, user)
+    audit("request_acknowledged", request_id=req.id, username=user.username)
+    return req
+
+
+def release_acknowledgement(db: Session, req: ChangeRequest, user: User) -> ChangeRequest:
+    if req.status != STATUS_PENDING:
+        raise RequestError(f"Request {req.id} is {req.status}, not pending")
+    if req.acknowledged_by_id is None:
+        return req
+    req.acknowledged_by_id = None
+    req.acknowledged_at = None
+    _teams_notify_released(req, user)
+    audit("request_ack_released", request_id=req.id, username=user.username)
+    return req
+
+
+def _teams_notify_pending(req: ChangeRequest) -> None:
+    """Best-effort: a Teams outage must not block the local VLAN request."""
+    try:
+        teams.notify_vlan_pending(req)
+    except TeamsError as exc:
+        log.warning("Teams notify failed for request %s: %s", req.id, exc)
+
+
+def _teams_notify_acknowledged(req: ChangeRequest, actor: User) -> None:
+    try:
+        teams.notify_acknowledged(req, actor)
+    except TeamsError as exc:
+        log.warning("Teams acknowledge notify failed for request %s: %s", req.id, exc)
+
+
+def _teams_notify_released(req: ChangeRequest, actor: User) -> None:
+    try:
+        teams.notify_released(req, actor)
+    except TeamsError as exc:
+        log.warning("Teams release notify failed for request %s: %s", req.id, exc)
 
 
 def _decision_work_notes(req: ChangeRequest, approved: bool) -> str:

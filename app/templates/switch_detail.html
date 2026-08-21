@@ -23,6 +23,9 @@
     </div>
   </div>
 </div>
+{% if not switch.monitoring_enabled %}
+<div class="flash">Monitoring is paused. Status, daily, and on-demand polls skip this box. Networks: resume or delete it under Inventory.</div>
+{% endif %}
 {% if switch.last_poll_error %}
 <div class="flash flash-error">Last poll error: {{ switch.last_poll_error }}</div>
 {% endif %}

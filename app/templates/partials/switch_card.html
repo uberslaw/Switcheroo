@@ -1,8 +1,11 @@
-<a class="switch-card" href="/switches/{{ card.switch.id }}">
+<a class="switch-card{% if not card.switch.monitoring_enabled %} is-paused{% endif %}" href="/switches/{{ card.switch.id }}">
   <div class="switch-card-top">
     <h2>{{ card.switch.name }}</h2>
     <span class="mono dim">{{ card.switch.management_ip }}</span>
   </div>
+  {% if not card.switch.monitoring_enabled %}
+  <p><span class="source source-rejected">monitoring paused</span></p>
+  {% endif %}
   <p class="muted">{{ card.switch.location or 'No location' }}</p>
   <div class="stat-row">
     <span class="stat up"><i></i>{{ card.counts.up }} up</span>

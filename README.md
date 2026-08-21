@@ -217,6 +217,28 @@ Give this to ServiceNow / IAM: **[docs/servicenow-poc.md](docs/servicenow-poc.md
 
 Review all requests (CS sees permitted offices/switches only): **http://127.0.0.1:8080/requests**
 
+Networks can **Approve & run** / **Reject** pending rows on that page (or on **http://127.0.0.1:8080/admin/approvals**).
+
+## Teams (VLAN-change channel alert)
+
+A Teams webhook is the pager so Networks do not have to keep the console open. **Only pending VLAN change requests** post a card (not bounce, refresh, troubleshoot, or auto-approved writes).
+
+| Mode | Env | Behaviour |
+| --- | --- | --- |
+| Dry-run (default) | `TEAMS_ENABLED=false` and/or `TEAMS_DRY_RUN=true` | Local request + payload written to `data/teams-dryrun/`. **No HTTP** to Microsoft. |
+| Live | `TEAMS_ENABLED=true`, `TEAMS_DRY_RUN=false`, `TEAMS_WEBHOOK_URL` + `SWITCHEROO_PUBLIC_URL` set | `POST` Adaptive Card (Workflows) or MessageCard (classic Incoming Webhook) to the channel. |
+
+The card says a VLAN change request has been generated, includes switch/port/VLAN facts, and has two links:
+
+- **I'm on it** → `{SWITCHEROO_PUBLIC_URL}/requests/{id}/ack` (claim the work so nobody doubles up)
+- **Open request page** → `{SWITCHEROO_PUBLIC_URL}/requests?status=pending#request-{id}` (accept or reject)
+
+Incoming webhooks cannot edit the original card in place. When someone acknowledges, Switcheroo posts a **follow-up** card: *VLAN request #N acknowledged — {name} is handling this — no need to pick it up.* Release posts that the request is available again.
+
+If live mode is on and the webhook or public URL is missing (or the webhook host is not Teams/Power Automate), startup **fails fast**. A Teams POST failure is logged and **does not** drop the local request.
+
+Give this to whoever owns the Networks channel: **[docs/teams-webhook.md](docs/teams-webhook.md)**.
+
 ## Auto-approve (Networks Policies)
 
 Default is **all off** — requests stay on the Networks queue. If **any** matching rule is on, the request runs immediately (VLAN still creates the ServiceNow ticket first, then resolve/close like a human Approve).
@@ -241,13 +263,16 @@ python -m pytest --timeout=30 --timeout-method=thread
 ```
 scripts/       Launch Control, install-service.ps1 / uninstall-service.ps1, WinSW wrapper
 app/            FastAPI app (uvicorn app.main:app)
-app/drivers/    SwitchDriver: simulator + cisco_iosxe + ServiceNow Table API (dry-run default)
-docs/           IAM / ServiceNow POC brief
+app/drivers/    SwitchDriver: simulator + cisco_iosxe + ServiceNow Table API + Teams webhook (dry-run default)
+docs/           IAM / ServiceNow POC brief, Teams webhook setup, security brief for Cyber
 app/services/   polling, cooldown, approvals
 app/templates/  Jinja2 + HTMX
 tests/
 data/           sqlite + switcheroo.log (created at runtime, not committed)
 ```
+
+Give this to Cyber: **[docs/security.md](docs/security.md)** (bind address, hashing, encrypted device secrets, CSRF, cookies, residual risk). In the running app: **Help → Security checklist**.
+Cursor agents: **[`.cursor/skills/hardening/SKILL.md`](.cursor/skills/hardening/SKILL.md)** (checklist of controls people usually miss).
 
 ## Gaps (v1)
 
@@ -255,5 +280,4 @@ data/           sqlite + switcheroo.log (created at runtime, not committed)
 - Entra ID / SSO is not implemented (local users only).
 - ServiceNow live Table API is implemented but **off** until an integration user exists. Arup incident `state` / `close_code` values are unverified.
 - Real 9300 YANG paths may need site-specific adjustment once RESTCONF is pointed at a lab switch.
-- Device passwords in SQLite are stored as-is for the lab; use an OS secret store before production.
-- No HTTPS terminator in-process; put one in front if you bind beyond loopback.
+- No HTTPS terminator in-process; put one in front if you bind beyond loopback. Set `SWITCHEROO_REQUIRE_HARDENED=true` before a shared deploy (that also blocks well-known lab users on an empty database).
