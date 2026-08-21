@@ -58,6 +58,33 @@ def _migrate_sqlite() -> None:
         names = {row[1] for row in rows}
         if names and "link_up_since" not in names:
             conn.execute(text("ALTER TABLE ports ADD COLUMN link_up_since DATETIME"))
+        if names and "faulty" not in names:
+            conn.execute(text("ALTER TABLE ports ADD COLUMN faulty INTEGER DEFAULT 0"))
+        pp_rows = conn.execute(text("PRAGMA table_info(patch_panels)")).fetchall()
+        pp_names = {row[1] for row in pp_rows}
+        if pp_names:
+            if "switch_id" not in pp_names:
+                conn.execute(text("ALTER TABLE patch_panels ADD COLUMN switch_id INTEGER"))
+            if "placement" not in pp_names:
+                conn.execute(text("ALTER TABLE patch_panels ADD COLUMN placement VARCHAR(16) DEFAULT ''"))
+        ppp_rows = conn.execute(text("PRAGMA table_info(patch_panel_ports)")).fetchall()
+        ppp_names = {row[1] for row in ppp_rows}
+        if ppp_names and "field_outlet_id" not in ppp_names:
+            conn.execute(text("ALTER TABLE patch_panel_ports ADD COLUMN field_outlet_id INTEGER"))
+        sw_rows = conn.execute(text("PRAGMA table_info(switches)")).fetchall()
+        sw_names = {row[1] for row in sw_rows}
+        switch_alters = {
+            "room": "VARCHAR(128) DEFAULT ''",
+            "stack_name": "VARCHAR(128) DEFAULT ''",
+            "stack_role": "VARCHAR(32) DEFAULT ''",
+            "member_number": "INTEGER DEFAULT 0",
+            "rack_order": "INTEGER DEFAULT 0",
+            "chassis_model": "VARCHAR(32) DEFAULT '9300'",
+        }
+        if sw_names:
+            for col, typ in switch_alters.items():
+                if col not in sw_names:
+                    conn.execute(text(f"ALTER TABLE switches ADD COLUMN {col} {typ}"))
         req_rows = conn.execute(text("PRAGMA table_info(change_requests)")).fetchall()
         req_names = {row[1] for row in req_rows}
         alters = {

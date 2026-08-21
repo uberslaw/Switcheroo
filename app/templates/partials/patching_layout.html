@@ -1,0 +1,84 @@
+<div class="patching-desk">
+  <div class="desk-main">
+    <form class="fo-search" method="get" action="/offices/{{ office.slug }}" autocomplete="off">
+      <input type="hidden" name="view" value="patching">
+      {% if active_stack_key %}<input type="hidden" name="stack" value="{{ active_stack_key }}">{% endif %}
+      <label>Search field outlet
+        <input type="search"
+               name="fo"
+               value="{{ fo_query }}"
+               placeholder="FO-27001"
+               hx-get="/partials/offices/{{ office.slug }}/fo-suggest"
+               hx-trigger="keyup changed delay:200ms"
+               hx-target="#fo-suggest"
+               hx-include="this">
+      </label>
+      <button class="btn btn-primary" type="submit">Find</button>
+    </form>
+    <div id="fo-suggest" class="fo-suggest"></div>
+
+    <nav class="stack-tabs" aria-label="Patching stack">
+      {% for st in patching_stacks %}
+      <a class="btn {% if active_stack and st.name == active_stack.name %}btn-primary{% endif %}"
+         href="/offices/{{ office.slug }}?view=patching&amp;stack={{ st.name|office_slug }}{% if fo_query %}&amp;fo={{ fo_query }}{% endif %}{% if show_available %}&amp;show_available=1{% endif %}">
+        {{ st.name }}
+      </a>
+      {% endfor %}
+    </nav>
+
+    <div id="available-highlight">
+      {% include "partials/available_ports.html" %}
+    </div>
+
+    {% for bay in patch_bays %}
+    <section class="layout-section patch-bay-stack">
+      <div class="patch-bay-head">
+        <div>
+          <h3>{{ bay.stack.name }}</h3>
+          <p class="muted">{{ bay.stack.room }} · {{ bay.blurb }}</p>
+        </div>
+        <a class="btn btn-primary"
+           href="/offices/{{ office.slug }}?view=patching&amp;stack={{ active_stack_key }}&amp;show_available=1{% if fo_query %}&amp;fo={{ fo_query }}{% endif %}">
+          Show available ports
+        </a>
+      </div>
+      {% if show_available %}
+      <p class="muted">Unpatched ports on this stack are highlighted. Uplinks, shutdown, and faulty ports are skipped.</p>
+      {% endif %}
+      {% for row in bay.rows %}
+      <div class="patch-bay {% if row.manager_above %}patch-bay-managed{% endif %}">
+        {% if row.manager_above %}
+          {% include "partials/cable_manager.html" %}
+        {% endif %}
+        {% if row.above %}
+          {% set panel = row.above %}
+          {% include "partials/patch_panel.html" %}
+        {% endif %}
+        <div class="patch-bay-chassis patch-bay-chassis-full">
+          <span class="member-num">#{{ row.switch.member_number }}</span>
+          <div class="patch-faceplate">
+            {% with switch=row.switch, groups=row.groups, views=row.views, selected=row.selected, patching_mode=True %}
+              {% include "partials/faceplate.html" %}
+            {% endwith %}
+          </div>
+          <p class="mini-caption">
+            <strong>{{ row.switch.name }}</strong>
+            <span class="mono dim">{{ row.port_hint }}</span>
+          </p>
+        </div>
+        {% if row.below %}
+          {% set panel = row.below %}
+          {% include "partials/patch_panel.html" %}
+        {% endif %}
+        {% if row.manager_below %}
+          {% include "partials/cable_manager.html" %}
+        {% endif %}
+      </div>
+      {% endfor %}
+    </section>
+    {% endfor %}
+  </div>
+  <div id="fo-pane-slot">
+    {% include "partials/fo_pane.html" %}
+  </div>
+</div>

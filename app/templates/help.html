@@ -36,6 +36,18 @@
     </section>
 
     <section class="panel">
+      <h2>Something is broken — collect a diagnostic</h2>
+      <p class="muted">If a poll, a switch write, or a ticket fails and the reason is not obvious, turn on step tracing before you retry:</p>
+      <ol class="help-list">
+        <li>Open <strong>Launch Control</strong> on the Switcheroo host (<code>scripts\Switcheroo-LaunchControl.cmd</code>).</li>
+        <li>Click <strong>Diagnostics ON</strong>. No restart needed — it takes effect within one poll cycle.</li>
+        <li>Reproduce the failure here in the website.</li>
+        <li>Click <strong>Open diagnostics.log</strong> and send the last lines.</li>
+      </ol>
+      <p class="muted">Each traced hop logs <code>begin</code>, then <code>ok</code> or <code>fail</code> with elapsed milliseconds, so the log names the hop that died (for example <code>cisco.restconf fail ... error=ConnectTimeout</code>) instead of just a stack trace. Passwords and webhook URLs are redacted. Turn <strong>Diagnostics OFF</strong> afterwards — DEBUG logging is noisy.</p>
+    </section>
+
+    <section class="panel">
       <h2>Security</h2>
       <p class="muted">Open the checklist for what this build already does, what <em>this host</em> still needs in <code>.env</code>, and what remains residual (SSO, TLS at the proxy, and similar).</p>
       <p><a class="btn btn-primary" href="/help/security">Security checklist</a></p>

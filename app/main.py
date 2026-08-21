@@ -9,9 +9,11 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app import __version__
 from app.config import get_settings
 from app.csrf import CSRFMiddleware
 from app.db import SessionLocal, init_db
+from app.diagnostics import clear_pid_file, sync_log_level, write_pid_file
 from app.logging_setup import setup_logging
 from app.poller import start_poller, stop_poller
 from app.prereq import check_prerequisites
@@ -28,6 +30,7 @@ async def lifespan(_app: FastAPI):
     settings = get_settings()
     check_prerequisites(settings)
     setup_logging(settings)
+    sync_log_level()
     init_db()
     db = SessionLocal()
     try:
@@ -37,6 +40,7 @@ async def lifespan(_app: FastAPI):
     finally:
         db.close()
     if not settings.testing:
+        write_pid_file()
         start_poller()
     log.info(
         "Switcheroo ready driver=%s bind=%s:%s data_dir=%s (lab defaults are not production)",
@@ -48,6 +52,7 @@ async def lifespan(_app: FastAPI):
     yield
     if not settings.testing:
         stop_poller()
+        clear_pid_file()
 
 
 def create_app() -> FastAPI:
@@ -74,6 +79,7 @@ def create_app() -> FastAPI:
         return {
             "ok": True,
             "app": "switcheroo",
+            "version": __version__,
             "driver": settings.driver,
             "testing": settings.testing,
         }

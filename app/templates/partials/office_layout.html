@@ -1,0 +1,36 @@
+{% if office.floor_stacks %}
+<section class="layout-section">
+  <h3>Floor stacks</h3>
+  <p class="muted">Access stacks side by side, member #1 at the top of each rack.</p>
+  <div class="floor-stacks">
+    {% for stack in office.floor_stacks %}
+      {% include "partials/rack.html" %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if office.mcr %}
+<section class="layout-section mcr-section">
+  <h3>Aux and core</h3>
+  <p class="muted">Aux (physical order #3 / #1 / #2) next to the 9500 core.</p>
+  <div class="mcr-cols">
+    {% for stack in office.mcr.stacks %}
+      {% include "partials/rack.html" %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% for room in office.other_rooms %}
+{% if room.has_non_floor %}
+<section class="layout-section">
+  <h3>{{ room.name }}</h3>
+  <div class="floor-stacks">
+    {% for stack in room.stacks %}
+      {% include "partials/rack.html" %}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endfor %}

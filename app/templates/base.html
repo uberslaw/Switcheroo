@@ -20,7 +20,7 @@
     </div>
     {% if user %}
     <nav class="nav">
-      <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Switches</a>
+      <a href="/" class="{% if request.url.path == '/' or request.url.path.startswith('/offices/') %}active{% endif %}">Switches</a>
       <a href="/requests" class="{% if request.url.path == '/requests' %}active{% endif %}">Requests</a>
       {% if user.role == 'networks' %}
       <a href="/admin/inventory" class="{% if '/admin/inventory' in request.url.path or '/admin/switches' in request.url.path %}active{% endif %}">Inventory</a>

@@ -1,0 +1,17 @@
+{% if hits %}
+<ul class="fo-suggest-list">
+  {% for hit in hits %}
+  <li>
+    <a href="/offices/{{ office.slug }}?view=patching&amp;fo={{ hit.code }}"
+       hx-get="/partials/offices/{{ office.slug }}/fo-pane?fo={{ hit.code }}"
+       hx-target="#fo-pane-slot"
+       hx-push-url="/offices/{{ office.slug }}?view=patching&amp;fo={{ hit.code }}">
+      <span class="mono">{{ hit.code }}</span>
+      <span class="muted">{{ hit.label }}</span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% elif fo_query %}
+<p class="muted">No field outlet matching {{ fo_query }}.</p>
+{% endif %}

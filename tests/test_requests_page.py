@@ -27,7 +27,7 @@ def test_networks_sees_all_offices(client, seeded_db):
     assert "Requests" in page.text
 
 
-def test_cs_limited_only_sees_permitted_switch(client, seeded_db):
+def test_cs_limited_only_sees_permitted_switch(client, seeded_db, closed_access):
     add_cs_user(seeded_db, "cs-limited", "cs-limited", ["CS-BLD-A-AS01"])
     cs = seeded_db.scalar(select(User).where(User.username == "cs"))
     a = first_port(seeded_db, "CS-BLD-A-AS01")

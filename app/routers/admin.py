@@ -23,6 +23,7 @@ from app.models import (
     UserSwitchPermission,
 )
 from app.services.auto_approve import global_key, is_enabled, office_key, requestor_key, set_policy
+from app.services.office import switch_sort_key, switches_grouped_by_office
 from app.services.request_service import RequestError, approve_request, reject_request
 from app.services.switch_service import delete_switch, set_monitoring
 from app.templating import flash, render
@@ -40,9 +41,35 @@ def _admin(request: Request, db: Session = Depends(get_db)) -> User:
     return require_networks(user)
 
 
+def _parse_int(value: str, default: int = 0) -> int:
+    try:
+        return int((value or "").strip() or default)
+    except ValueError:
+        return default
+
+
+def _apply_stack_fields(
+    switch: Switch,
+    *,
+    room: str,
+    stack_name: str,
+    stack_role: str,
+    member_number: str,
+    rack_order: str,
+    chassis_model: str,
+) -> None:
+    switch.room = room.strip()
+    switch.stack_name = stack_name.strip()
+    switch.stack_role = stack_role.strip()
+    switch.member_number = _parse_int(member_number)
+    switch.rack_order = _parse_int(rack_order)
+    model = chassis_model.strip().lower()
+    switch.chassis_model = "9500" if model in {"9500", "c9500"} else "9300"
+
+
 @router.get("/inventory")
 def inventory(request: Request, db: Session = Depends(get_db), user: User = Depends(_admin)):
-    switches = list(db.scalars(select(Switch).order_by(Switch.name)).all())
+    switches = sorted(db.scalars(select(Switch)).all(), key=switch_sort_key)
     return render(request, "admin/inventory.html", user=user, switches=switches)
 
 
@@ -57,6 +84,12 @@ def switch_create(
     name: str = Form(...),
     management_ip: str = Form(""),
     location: str = Form(""),
+    room: str = Form(""),
+    stack_name: str = Form(""),
+    stack_role: str = Form(""),
+    member_number: str = Form("0"),
+    rack_order: str = Form("0"),
+    chassis_model: str = Form("9300"),
     notes: str = Form(""),
     username: str = Form(""),
     password: str = Form(""),
@@ -78,6 +111,15 @@ def switch_create(
         password=store_secret(password) if password else None,
         driver_override=override,
         monitoring_enabled=True,
+    )
+    _apply_stack_fields(
+        switch,
+        room=room,
+        stack_name=stack_name,
+        stack_role=stack_role,
+        member_number=member_number,
+        rack_order=rack_order,
+        chassis_model=chassis_model,
     )
     db.add(switch)
     db.commit()
@@ -101,6 +143,12 @@ def switch_update(
     name: str = Form(...),
     management_ip: str = Form(""),
     location: str = Form(""),
+    room: str = Form(""),
+    stack_name: str = Form(""),
+    stack_role: str = Form(""),
+    member_number: str = Form("0"),
+    rack_order: str = Form("0"),
+    chassis_model: str = Form("9300"),
     notes: str = Form(""),
     username: str = Form(""),
     password: str = Form(""),
@@ -117,6 +165,15 @@ def switch_update(
     switch.management_ip = management_ip.strip()
     switch.location = location.strip()
     switch.notes = notes.strip()
+    _apply_stack_fields(
+        switch,
+        room=room,
+        stack_name=stack_name,
+        stack_role=stack_role,
+        member_number=member_number,
+        rack_order=rack_order,
+        chassis_model=chassis_model,
+    )
     if username.strip():
         switch.username = username.strip()
     if password:
@@ -438,7 +495,8 @@ def history(request: Request, db: Session = Depends(get_db), user: User = Depend
 @router.get("/permissions")
 def permissions(request: Request, db: Session = Depends(get_db), user: User = Depends(_admin)):
     users = list(db.scalars(select(User).order_by(User.username)).all())
-    switches = list(db.scalars(select(Switch).order_by(Switch.name)).all())
+    switches = sorted(db.scalars(select(Switch)).all(), key=switch_sort_key)
+    switch_groups = switches_grouped_by_office(switches)
     links = {(p.user_id, p.switch_id) for p in db.scalars(select(UserSwitchPermission)).all()}
     return render(
         request,
@@ -446,6 +504,7 @@ def permissions(request: Request, db: Session = Depends(get_db), user: User = De
         user=user,
         users=users,
         switches=switches,
+        switch_groups=switch_groups,
         links=links,
         roles=(ROLE_CS, ROLE_NETWORKS),
     )

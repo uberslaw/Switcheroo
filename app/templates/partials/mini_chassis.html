@@ -1,0 +1,28 @@
+{% set is9500 = switch.is_9500 %}
+<div class="chassis chassis-mini {% if is9500 %}chassis-c9500{% endif %}" aria-hidden="true">
+  <div class="mini-bezel">
+    <div class="mini-sys">
+      <div class="mini-model">{% if is9500 %}C9500{% else %}C9300-48{% endif %}</div>
+      <div class="mini-leds"><i></i><i></i><i class="dim"></i></div>
+    </div>
+    <div class="mini-ports">
+      {% for gstart in [0, 12, 24, 36] %}
+      <div class="mini-block">
+        {% for col in range(6) %}
+        {% set odd = gstart + col * 2 %}
+        <div class="mini-col">
+          <i class="dot led-{{ card.leds[odd] }}{% if available_ids is defined and highlight_ports is defined and highlight_ports|length > odd and highlight_ports[odd].id in available_ids %} port-available{% endif %}"></i>
+          <i class="dot led-{{ card.leds[odd + 1] }}{% if available_ids is defined and highlight_ports is defined and highlight_ports|length > (odd + 1) and highlight_ports[odd + 1].id in available_ids %} port-available{% endif %}"></i>
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="mini-uplink {% if is9500 %}mini-uplink-wide{% endif %}">{% if is9500 %}QSFP{% else %}NM{% endif %}</div>
+  </div>
+</div>
+<div class="stat-row mini-stats">
+  <span class="stat up"><i></i>{{ card.counts.up }}</span>
+  <span class="stat down"><i></i>{{ card.counts.down }}</span>
+  <span class="stat shut"><i></i>{{ card.counts.shutdown }}</span>
+</div>

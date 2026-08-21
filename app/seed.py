@@ -9,10 +9,16 @@ from sqlalchemy.orm import Session
 from app.auth import BOOTSTRAP_PASSWORD_LENGTH, hash_password, password_meets_policy
 from app.config import get_settings
 from app.drivers.simulator import SimPort, simulator
+from app.services.patching import is_third_aux
 from app.models import (
     ROLE_CS,
     ROLE_NETWORKS,
     SOURCE_SEED,
+    CablePath,
+    FieldOutlet,
+    Patch,
+    PatchPanel,
+    PatchPanelPort,
     Port,
     Switch,
     SwitchVlan,
@@ -39,8 +45,56 @@ VLANS = (
     (99, "MGMT"),
 )
 
+BNE_OFFICE = "Brisbane"
+BNE_L27_MCR = "Level 27 Main Comms Room"
+BNE_L26_IDF = "Level 26 IDF"
+BNE_L21_IDF = "Level 21 IDF"
+
+
+def _bne_member(
+    name: str,
+    management_ip: str,
+    room: str,
+    stack_name: str,
+    stack_role: str,
+    member_number: int,
+    rack_order: int,
+    chassis_model: str = "9300",
+    notes: str = "",
+) -> dict:
+    model_label = "Catalyst 9500" if chassis_model == "9500" else "Catalyst 9300 48-port"
+    return {
+        "name": name,
+        "management_ip": management_ip,
+        "location": BNE_OFFICE,
+        "room": room,
+        "stack_name": stack_name,
+        "stack_role": stack_role,
+        "member_number": member_number,
+        "rack_order": rack_order,
+        "chassis_model": chassis_model,
+        "notes": notes
+        or f"Simulated {model_label}, {stack_name} member #{member_number}. TEST-NET-1 address, not a real device.",
+    }
+
+
+def _bne_floor(prefix: str, count: int, room: str, stack_name: str, ip_start: int) -> list[dict]:
+    return [
+        _bne_member(
+            name=f"{prefix}-{idx:02d}",
+            management_ip=f"192.0.2.{ip_start + idx - 1}",
+            room=room,
+            stack_name=stack_name,
+            stack_role="floor",
+            member_number=idx,
+            rack_order=idx,
+        )
+        for idx in range(1, count + 1)
+    ]
+
+
 # Documentation TEST-NET-1 addresses — not live campus switches.
-SWITCH_SPECS = (
+SWITCH_SPECS: tuple[dict, ...] = (
     {
         "name": "CS-BLD-A-AS01",
         "management_ip": "192.0.2.10",
@@ -53,6 +107,33 @@ SWITCH_SPECS = (
         "location": "Building B / IDF-2 (simulated)",
         "notes": "Simulated Catalyst 9300 48-port. TEST-NET-1 address, not a real device.",
     },
+    *_bne_floor("BNE-L27-FS", 7, BNE_L27_MCR, "Level 27 Floor Stack", 21),
+    *_bne_floor("BNE-L26-FS", 5, BNE_L26_IDF, "Level 26 Floor Stack", 31),
+    *_bne_floor("BNE-L21-FS", 3, BNE_L21_IDF, "Level 21 Floor Stack", 41),
+    # Aux physical order top → bottom is #3, #1, #2 (rack_order, not numeric name order).
+    _bne_member("BNE-L27-AUX-03", "192.0.2.53", BNE_L27_MCR, "Level 27 Aux Stack", "aux", 3, 1),
+    _bne_member("BNE-L27-AUX-01", "192.0.2.51", BNE_L27_MCR, "Level 27 Aux Stack", "aux", 1, 2),
+    _bne_member("BNE-L27-AUX-02", "192.0.2.52", BNE_L27_MCR, "Level 27 Aux Stack", "aux", 2, 3),
+    _bne_member(
+        "BNE-L27-CORE-01",
+        "192.0.2.61",
+        BNE_L27_MCR,
+        "Level 27 Core Stack",
+        "core",
+        1,
+        1,
+        chassis_model="9500",
+    ),
+    _bne_member(
+        "BNE-L27-CORE-02",
+        "192.0.2.62",
+        BNE_L27_MCR,
+        "Level 27 Core Stack",
+        "core",
+        2,
+        2,
+        chassis_model="9500",
+    ),
 )
 
 
@@ -192,6 +273,12 @@ def seed(db: Session) -> dict[str, int]:
                 name=spec["name"],
                 management_ip=spec["management_ip"],
                 location=spec["location"],
+                room=spec.get("room") or "",
+                stack_name=spec.get("stack_name") or "",
+                stack_role=spec.get("stack_role") or "",
+                member_number=int(spec.get("member_number") or 0),
+                rack_order=int(spec.get("rack_order") or 0),
+                chassis_model=spec.get("chassis_model") or "9300",
                 notes=spec["notes"],
                 username=None,
                 password=None,
@@ -200,8 +287,30 @@ def seed(db: Session) -> dict[str, int]:
             db.add(switch)
             db.flush()
             created_switches += 1
-            for vlan_id, vlan_name in VLANS:
+            log.info("Seeded simulated switch %s", spec["name"])
+        else:
+            # Upsert layout so an old DB (lab-only, or columns added empty) still
+            # groups into Brisbane racks. Leave credentials / driver as-is.
+            switch.location = spec["location"]
+            switch.room = spec.get("room") or ""
+            switch.stack_name = spec.get("stack_name") or ""
+            switch.stack_role = spec.get("stack_role") or ""
+            switch.member_number = int(spec.get("member_number") or 0)
+            switch.rack_order = int(spec.get("rack_order") or 0)
+            switch.chassis_model = spec.get("chassis_model") or "9300"
+            if not (switch.management_ip or "").strip():
+                switch.management_ip = spec["management_ip"]
+            if not (switch.notes or "").strip():
+                switch.notes = spec["notes"]
+            if not (switch.driver_override or "").strip():
+                switch.driver_override = "simulator"
+
+        existing_vlans = {v.vlan_id for v in switch.vlans}
+        for vlan_id, vlan_name in VLANS:
+            if vlan_id not in existing_vlans:
                 db.add(SwitchVlan(switch_id=switch.id, vlan_id=vlan_id, vlan_name=vlan_name))
+
+        if not switch.ports:
             for row in _port_plan(spec["name"]):
                 db.add(
                     Port(
@@ -211,12 +320,6 @@ def seed(db: Session) -> dict[str, int]:
                     )
                 )
             db.flush()
-            log.info("Seeded simulated switch %s", spec["name"])
-        else:
-            existing_vlans = {v.vlan_id for v in switch.vlans}
-            for vlan_id, vlan_name in VLANS:
-                if vlan_id not in existing_vlans:
-                    db.add(SwitchVlan(switch_id=switch.id, vlan_id=vlan_id, vlan_name=vlan_name))
 
         cs = users["cs"]
         link = db.scalar(
@@ -233,6 +336,8 @@ def seed(db: Session) -> dict[str, int]:
         _backfill_link_uptime(switch)
         for port in switch.ports:
             simulator.hydrate_from_port(switch, port)
+
+    _seed_brisbane_patching(db)
 
     db.commit()
     return {"users": created_users, "switches": created_switches}
@@ -304,3 +409,219 @@ def _backfill_link_uptime(switch: Switch) -> None:
             port.link_up_since = now - timedelta(hours=1 + (port.if_index % 17), minutes=(port.if_index * 7) % 60)
         elif not up:
             port.link_up_since = None
+
+
+def _seed_brisbane_patching(db: Session) -> None:
+    """24-port TERA-MAX style panels in the RU above and below each floor 9300.
+
+    A 20 cm patch cord reaches the closest switch ports: above → Gi1/0/1–24,
+    below → Gi1/0/25–48. Aux #1 and #2 have the same FO sandwich; aux #3 (top)
+    has horizontal cable routing above and below, no field panels. Core has none.
+    """
+    _remove_legacy_placeholder_panels(db)
+    floors = (
+        ("Level 27 Floor Stack", "L27", "FO-27", BNE_L27_MCR),
+        ("Level 26 Floor Stack", "L26", "FO-26", BNE_L26_IDF),
+        ("Level 21 Floor Stack", "L21", "FO-21", BNE_L21_IDF),
+    )
+    for stack_name, floor, fo_prefix, room in floors:
+        members = list(
+            db.scalars(
+                select(Switch)
+                .where(Switch.location == BNE_OFFICE, Switch.stack_name == stack_name)
+                .order_by(Switch.rack_order, Switch.member_number)
+            ).all()
+        )
+        seq = 1
+        for switch in members:
+            seq = _seed_member_panels(db, switch, floor, room, fo_prefix, seq)
+            if switch.name == "BNE-L27-FS-01":
+                ports = {p.if_index: p for p in switch.ports}
+                spare = ports.get(15)
+                if spare is not None:
+                    spare.faulty = True
+                shut = ports.get(39)
+                if shut is not None:
+                    shut.admin_status = "down"
+                    shut.oper_status = "down"
+
+    _seed_aux_patching(db)
+
+
+def _seed_aux_patching(db: Session) -> None:
+    """Aux rack: #3 on top with cable managers; #1 and #2 with FO above and below."""
+    aux = list(
+        db.scalars(
+            select(Switch)
+            .where(Switch.location == BNE_OFFICE, Switch.stack_role == "aux")
+            .order_by(Switch.member_number)
+        ).all()
+    )
+    by_member = {s.member_number: s for s in aux}
+    for member, prefix in ((1, "FO-A1"), (2, "FO-A2")):
+        switch = by_member.get(member)
+        if switch is not None and not is_third_aux(switch):
+            _seed_member_panels(db, switch, "AUX", BNE_L27_MCR, prefix, 1)
+    for switch in aux:
+        if not is_third_aux(switch):
+            continue
+        for placement in ("above", "below"):
+            leftover = db.scalar(
+                select(PatchPanel).where(PatchPanel.name == f"{switch.name}-PP-{placement.upper()}")
+            )
+            if leftover is not None:
+                db.delete(leftover)
+                db.flush()
+        _empty_third_aux_ports(switch)
+
+
+def _empty_third_aux_ports(switch: Switch) -> None:
+    """3rd aux is the empty switch — no desk FOs, copper ports sit unused."""
+    for port in switch.ports:
+        if (port.purpose or "") == "uplink":
+            continue
+        port.purpose = "unused"
+        port.friendly_label = ""
+        port.oper_status = "down"
+        port.admin_status = "up"
+        port.vlan_id = None
+        port.vlan_name = None
+        port.mac_address = None
+        port.ip_address = None
+        port.ise_status = "none"
+        port.link_up_since = None
+        port.faulty = False
+    for port in switch.ports:
+        simulator.hydrate_from_port(switch, port)
+
+
+def _remove_legacy_placeholder_panels(db: Session) -> None:
+    legacy = ("BNE-L27-PP-01", "BNE-L26-PP-01", "BNE-L21-PP-01")
+    for name in legacy:
+        panel = db.scalar(select(PatchPanel).where(PatchPanel.name == name))
+        if panel is not None:
+            db.delete(panel)
+            db.flush()
+
+
+def _seed_member_panels(
+    db: Session,
+    switch: Switch,
+    floor: str,
+    room: str,
+    fo_prefix: str,
+    seq: int,
+) -> int:
+    ports = {p.if_index: p for p in switch.ports}
+    for placement, port_base, patch_first in (("above", 0, 12), ("below", 24, 0)):
+        panel_name = f"{switch.name}-PP-{placement.upper()}"
+        panel = db.scalar(select(PatchPanel).where(PatchPanel.name == panel_name))
+        if panel is None:
+            panel = PatchPanel(
+                name=panel_name,
+                room=room,
+                location=BNE_OFFICE,
+                port_count=24,
+                switch_id=switch.id,
+                placement=placement,
+            )
+            db.add(panel)
+            db.flush()
+            for pos in range(1, 25):
+                db.add(PatchPanelPort(panel_id=panel.id, position=pos, field_number=str(pos)))
+            db.flush()
+        else:
+            panel.switch_id = switch.id
+            panel.placement = placement
+            panel.room = room
+            panel.location = BNE_OFFICE
+        jacks = {
+            p.position: p
+            for p in db.scalars(select(PatchPanelPort).where(PatchPanelPort.panel_id == panel.id)).all()
+        }
+        for pos in range(1, 25):
+            code = f"{fo_prefix}{seq:03d}"
+            seq += 1
+            outlet = db.scalar(select(FieldOutlet).where(FieldOutlet.code == code))
+            if outlet is None:
+                outlet = FieldOutlet(
+                    code=code,
+                    label=f"{floor} {placement} jack {pos:02d} · {switch.name}",
+                    floor=floor,
+                    room=room,
+                    faulty=False,
+                )
+                db.add(outlet)
+                db.flush()
+            jack = jacks.get(pos)
+            if jack is None:
+                continue
+            jack.field_number = str(pos)
+            jack.field_outlet_id = outlet.id
+            switch_port = ports.get(port_base + pos)
+            _ensure_cable(
+                db,
+                "field_outlet",
+                outlet.id,
+                "panel_port",
+                jack.id,
+                None,
+                "stub: field horizontal",
+            )
+            if patch_first and pos <= patch_first and switch_port is not None:
+                existing = db.scalar(select(Patch).where(Patch.field_outlet_id == outlet.id))
+                taken = db.scalar(select(Patch).where(Patch.port_id == switch_port.id))
+                if existing is None and taken is None:
+                    db.add(
+                        Patch(
+                            field_outlet_id=outlet.id,
+                            port_id=switch_port.id,
+                            panel_port_id=jack.id,
+                        )
+                    )
+                elif existing is not None:
+                    existing.panel_port_id = jack.id
+                _ensure_cable(
+                    db,
+                    "panel_port",
+                    jack.id,
+                    "switch_port",
+                    switch_port.id,
+                    0.20,
+                    "20 cm patch to closest RU",
+                )
+    return seq
+
+
+def _ensure_cable(
+    db: Session,
+    from_kind: str,
+    from_id: int,
+    to_kind: str,
+    to_id: int,
+    length_m: float | None,
+    path_note: str,
+) -> None:
+    row = db.scalar(
+        select(CablePath).where(
+            CablePath.from_kind == from_kind,
+            CablePath.from_id == from_id,
+            CablePath.to_kind == to_kind,
+            CablePath.to_id == to_id,
+        )
+    )
+    if row is None:
+        db.add(
+            CablePath(
+                from_kind=from_kind,
+                from_id=from_id,
+                to_kind=to_kind,
+                to_id=to_id,
+                length_m=length_m,
+                path_note=path_note,
+            )
+        )
+        return
+    if length_m is not None:
+        row.length_m = length_m
+        row.path_note = path_note

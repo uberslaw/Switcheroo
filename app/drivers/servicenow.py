@@ -12,6 +12,7 @@ from urllib.parse import quote
 import httpx
 
 from app.config import get_settings
+from app.diagnostics import step
 from app.models import REQUEST_VLAN, ChangeRequest
 from app.services.uptime import short_if_name
 
@@ -468,23 +469,24 @@ class ServiceNowAdapter:
         auth = (settings.servicenow_username, settings.servicenow_password)
         timeout = httpx.Timeout(settings.servicenow_http_timeout, connect=min(5.0, float(settings.servicenow_http_timeout)))
         try:
-            if self._http is not None:
-                response = self._http.request(
-                    method, url, json=json_body, params=params, headers=headers, auth=auth, timeout=timeout
-                )
-            elif settings.testing:
-                raise ServiceNowError(
-                    "Refusing live ServiceNow sockets in tests. Inject a mock HTTP client."
-                )
-            else:
-                with httpx.Client(timeout=timeout, verify=True) as client:
-                    response = client.request(method, url, json=json_body, params=params, headers=headers, auth=auth)
+            with step("servicenow.call", method=method, path=path):
+                if self._http is not None:
+                    response = self._http.request(
+                        method, url, json=json_body, params=params, headers=headers, auth=auth, timeout=timeout
+                    )
+                elif settings.testing:
+                    raise ServiceNowError(
+                        "Refusing live ServiceNow sockets in tests. Inject a mock HTTP client."
+                    )
+                else:
+                    with httpx.Client(timeout=timeout, verify=True) as client:
+                        response = client.request(method, url, json=json_body, params=params, headers=headers, auth=auth)
+                if response.status_code >= 400:
+                    raise ServiceNowError(
+                        f"ServiceNow {method} {path} returned {response.status_code}: {response.text[:300]}"
+                    )
         except httpx.HTTPError as exc:
             raise ServiceNowError(f"ServiceNow {method} {path} failed: {exc}") from exc
-        if response.status_code >= 400:
-            raise ServiceNowError(
-                f"ServiceNow {method} {path} returned {response.status_code}: {response.text[:300]}"
-            )
         if not response.content:
             return {}
         return response.json()

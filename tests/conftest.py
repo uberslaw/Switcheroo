@@ -25,6 +25,8 @@ os.environ["TEAMS_ENABLED"] = "false"
 os.environ["TEAMS_DRY_RUN"] = "true"
 os.environ["TEAMS_WEBHOOK_URL"] = ""
 os.environ["SWITCHEROO_PUBLIC_URL"] = "http://switcheroo.test"
+# Default matches lab: every signed-in user sees every switch.
+os.environ.setdefault("SWITCHEROO_OPEN_ACCESS", "true")
 
 import httpx
 import pytest
@@ -64,6 +66,7 @@ VLAN_REASON = "Need guest VLAN for visitor laptop"
 @pytest.fixture(autouse=True)
 def _clean_db():
     from app.config import get_settings
+    from app.diagnostics import sync_log_level
 
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -74,6 +77,10 @@ def _clean_db():
         if folder.exists():
             for path in folder.glob("*.json"):
                 path.unlink()
+    flag = data_dir / "diagnostics.enabled"
+    if flag.exists():
+        flag.unlink()
+    sync_log_level()
     yield
     simulator.reset()
 
@@ -112,6 +119,12 @@ def networks_client(client):
     response = client.post("/login", data={"username": "networks", "password": "networks"}, follow_redirects=False)
     assert response.status_code == 303
     return client
+
+
+@pytest.fixture
+def closed_access(monkeypatch):
+    """Enforce the CS grant table (SWITCHEROO_OPEN_ACCESS=false)."""
+    monkeypatch.setenv("SWITCHEROO_OPEN_ACCESS", "false")
 
 
 def add_cs_user(db, username: str, password: str, switch_names: list[str] | None = None) -> User:

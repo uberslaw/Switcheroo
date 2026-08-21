@@ -11,8 +11,9 @@ This is a **lab-first v1**. Default driver is an in-process simulator so the sit
 | Topic | What this repo assumes |
 | --- | --- |
 | Runtime | Python **3.12 or newer** on PATH (`python`). Verified on this host with 3.14. Not bundled. |
-| OS | Windows PowerShell (commands below). Linux/macOS work with the same `python -m` flow. |
-| Network | First run binds **127.0.0.1:8080** only. No campus switches, RESTCONF, SSH, or ServiceNow are required. |
+| OS | Windows PowerShell 5.1+ (scripts below). Linux/macOS work with the same `python -m` flow (no WinSW service). |
+| Privileges | **Install / Start / Stop / Restart of the Windows service** needs administrator. Preferred ops path: run **Master Launch Control as administrator once**, leave it open, then **Open Launch Control** from the card (this window inherits that token; Install runs in-process with no second UAC). Launch Control can **watch** status, PID, logs, and `/health` without admin. Admin does **not** unlock a pywin32 DLL held by a running Python service — Stop first. |
+| Network | Safe first-run default is **127.0.0.1:8080** (this machine only). For other PCs on the internal LAN set `SWITCHEROO_HOST=0.0.0.0` and allow inbound TCP 8080. No campus switches, RESTCONF, SSH, or ServiceNow are required. |
 | Data | SQLite + logs under `data\` (created at startup). The process must be able to write that folder. |
 | Auth | Local username/password. **Not Entra SSO.** Seeded lab passwords are public in this README. Each VLAN ticket also records the **Windows account of the process running Switcheroo** (`USERDOMAIN\USERNAME`). Fine for a local POC on a CS/Networks PC; a shared server would need SSO, or the field would be the service account. |
 | Hardware | `SWITCHEROO_DRIVER=simulator` by default. Real 9300s need RESTCONF (preferred), SSH/Netmiko fallback, optional SNMP, and a **dedicated TACACS or local user** — never a personal login. |
@@ -22,9 +23,50 @@ Lab-only defaults that must change before any shared/internal deploy:
 - Bind address `127.0.0.1` (set `SWITCHEROO_HOST=0.0.0.0` only on a firewalled internal host)
 - `SWITCHEROO_SECRET_KEY=change-me-lab-only-not-for-production`
 - Users `networks` / `networks` and `cs` / `cs`
-- Simulated mgmt IPs `192.0.2.10` and `192.0.2.11` (RFC 5737 TEST-NET-1, not live devices)
+- Simulated mgmt IPs `192.0.2.10` / `192.0.2.11` (lab buildings) and `192.0.2.21`–`192.0.2.62` (Brisbane template). RFC 5737 TEST-NET-1, not live devices.
 
-## Windows first run
+## Windows first run (service + Launch Control)
+
+The supported operator path is a **Windows service** so the site comes back after reboot. **Launch Control** is an out-of-band monitor — not the website.
+
+### 1. Install the service (administrator, once)
+
+Python **3.12+** must be on PATH the first time (the installer creates `.venv` and copies `.env` if missing). WinSW (MIT) is downloaded into `scripts\winsw\` or you can drop `WinSW.NET461.exe` there for an offline box. No Visual Studio.
+
+```powershell
+# Elevated PowerShell
+cd C:\Switcheroo
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install-service.ps1
+```
+
+The script fail-fast checks Python, venv, `.env`, and a writable `data\`, then installs service **`Switcheroo`** (`C:\Switcheroo\.venv\Scripts\python.exe -m app`, working directory `C:\Switcheroo`), sets **Automatic Delayed Start** and **restart on failure**, starts it, and verifies:
+
+- `Get-Service Switcheroo` is **Running**
+- `GET http://127.0.0.1:8080/health` returns `ok`
+
+Logs: `data\install-service.log`, `data\switcheroo.log`, plus WinSW `data\Switcheroo.out.log` / `.err.log` / `.wrapper.log`.
+
+Uninstall (also elevated): `.\scripts\uninstall-service.ps1`
+
+### 2. Launch Control (monitor)
+
+Double-click **`scripts\Switcheroo-LaunchControl.cmd`** (or run `scripts\New-SwitcherooShortcuts.cmd` once for a desktop shortcut).
+
+The window must show:
+
+- **Status** from the Windows service (Running / Stopped / Starting / Stopped (failed)) or from an attached `python -m app` if the service is not installed
+- **PID** of the listening python process (never `-` while Running)
+- **Live console** — last 200 lines of `data\switcheroo.log` and follow (the black pane is a log tail; empty is a bug)
+- **Health** — `GET /health` ok/fail and latency
+- Bind URL and python path in the header
+
+Start / Stop / Restart talk to the **service** when it is installed. Without elevation those buttons refuse with a message (not a silent no-op); status, PID, logs, and health still update.
+
+If the service is not installed yet, Start will launch `python -m app` for this session only (dies at logoff / reboot). Use **Install Windows service** in the UI. If Launch Control is already admin (opened from an elevated Master Launch Control), install runs in this token with no extra UAC. Otherwise Windows will prompt. **Stop** the service before reinstall if Python still holds this venv's pywin32 DLL.
+
+### 3. Optional: raw console (no service)
+
+`.\run.ps1` or:
 
 ```powershell
 cd C:\Switcheroo
@@ -35,27 +77,29 @@ Copy-Item .env.example .env
 python -m app
 ```
 
-Or: `.\run.ps1`
-
 Open http://127.0.0.1:8080
 
 | Username | Password | Role |
 | --- | --- | --- |
 | `networks` | `networks` | Inventory, port purposes, CS permissions, approval queue |
-| `cs` | `cs` | Permitted switches, request VLAN/bounce/bring-online, on-demand refresh, troubleshooting |
+| `cs` | `cs` | All switches while `SWITCHEROO_OPEN_ACCESS=true` (lab default); otherwise only granted switches |
 
 These are **lab defaults**. Create real users under Access before sharing the site.
 
-To listen on the LAN (internal only):
+### Remote access from another computer (internal LAN only)
 
-```powershell
-# in .env
-SWITCHEROO_HOST=0.0.0.0
-```
+This is **not** a public internet app. Bind all interfaces only on a firewalled internal host. Do not port-forward 8080 and do not disable Windows Firewall.
 
-Then restrict with Windows Firewall / reverse proxy. Do not put Switcheroo on the public internet.
+1. In `.env` set `SWITCHEROO_HOST=0.0.0.0` (keep `SWITCHEROO_PORT=8080` unless you already changed it). Restart the **Switcheroo** service (or `python -m app`). Confirm listen with `Get-NetTCPConnection -LocalPort 8080` — you want `0.0.0.0:8080` or `[::]:8080` **Listen**, not `127.0.0.1:8080`.
+2. Allow **inbound TCP 8080** on the Windows Firewall profile the NIC actually uses (**Domain** vs **Private**). A rule on the wrong profile looks like it was added but still blocks.
+3. Clients open `http://<this-machine-LAN-ip>:8080` (not `127.0.0.1`). Example: `http://192.168.1.10:8080`.
 
-Logs: `data\switcheroo.log`  
+| Symptom | Meaning |
+| --- | --- |
+| Connection **refused** | Nothing is listening on the LAN NIC (still bound to loopback, or the process is down). |
+| Connection **timeout** | Packet is dropped — firewall profile, routing, or a filter in between. |
+
+Logs: `data\switcheroo.log`, `data\diagnostics.log` (after **Diagnostics ON** in Launch Control)  
 Database: `data\switcheroo.db`
 
 ## Polling load (Catalyst 9300)
@@ -71,7 +115,7 @@ A failed poll is recorded on the switch/port and **does not crash** the website.
 
 ### Faceplate, LEDs, and connected uptime
 
-The switch page is a **Catalyst 9300-style faceplate** (48 RJ45, odd-over-even, four groups of 12, SFP/NM cages on the right). Click a port to fill the right-hand detail pane.
+The switch page is a **Catalyst 9300-style faceplate** (48 RJ45, odd-over-even, four groups of 12, SFP/NM cages on the right). Click a port to fill the right-hand detail pane. Brisbane **core** members use a distinct **Catalyst 9500-looking** chassis (wider QSFP uplink bay) still with 48 copper ports.
 
 Port LED legend:
 
@@ -88,11 +132,43 @@ Port LED legend:
 - Per switch: `/switches/{id}/export.xlsx` (also the **Export XLSX** button on the faceplate page).
 - All switches the user can see: `/export.xlsx` (dashboard and Networks inventory).
 
-Workbook columns: switch, port, purpose, label, status, admin, VLAN, VLAN name, MAC, IP, ISE, connected uptime, last status poll, last detail poll. CS only receives switches they are permitted to see. Requires `openpyxl` (pinned in `requirements.txt`).
+Workbook columns: switch, port, purpose, label, status, admin, VLAN, VLAN name, MAC, IP, ISE, connected uptime, last status poll, last detail poll. CS only receives switches they are permitted to see unless `SWITCHEROO_OPEN_ACCESS=true` (lab default: everyone sees every switch). Requires `openpyxl` (pinned in `requirements.txt`).
+
+## Brisbane office template
+
+Seed creates a 20-switch Brisbane campus (plus the two original lab boxes). `Switch.location` is **Brisbane**, so CS office auto-approve and the Requests office filter use that name. Networks can rename stacks/members on **Inventory**. Seed **upserts** by switch name: it still runs when `data\switcheroo.db` already exists, fills missing Brisbane rows and layout fields, and does not duplicate. The CS grant table is still populated; while **`SWITCHEROO_OPEN_ACCESS=true`** (default in `.env.example`) every signed-in user sees every switch — set it `false` later to enforce grants.
+
+After seed, **restart the Switcheroo Windows service** so the running process hydrates the simulator (`Restart-Service Switcheroo` from an elevated prompt). Seed also runs at process start. If the service cannot be restarted from this session, seed the live file with `python -c` against `data\switcheroo.db` then restart so `/` is not empty.
+
+| What to open | URL |
+| --- | --- |
+| Home (Brisbane racks + lab cards) | http://127.0.0.1:8080/ |
+| Brisbane office layout | http://127.0.0.1:8080/offices/brisbane |
+| Example floor member faceplate | home → **BNE-L27-FS-01** (or Inventory) |
+| Example aux (top of aux rack is #3) | **BNE-L27-AUX-03** |
+| Example 9500 core | **BNE-L27-CORE-01** |
+| Auto-approve office **Brisbane** | http://127.0.0.1:8080/admin/policies |
+
+**How it looks**
+
+- **Home / Brisbane page:** not a flat list of 20 cards. **Floor stacks** are three vertical racks (L27 = 7, L26 = 5, L21 = 3), member **#1 at the top**.
+- **Level 27 Main Comms Room:** three columns — L27 floor stack (those 7 live in the MCR), aux stack, core 9500 stack.
+- **Aux physical order** (top → bottom): **#3, #1, #2** (`BNE-L27-AUX-03`, `BNE-L27-AUX-01`, `BNE-L27-AUX-02`). `rack_order` stores that, so the UI does not sort 1-2-3.
+- **L26 / L21** floor stacks are their own IDFs (not inside the MCR). Click a mini chassis for the existing full faceplate.
+
+**Naming (Networks can rename)**
+
+| Role | Names | Room |
+| --- | --- | --- |
+| L27 floor stack | `BNE-L27-FS-01` … `BNE-L27-FS-07` | Level 27 Main Comms Room |
+| L26 floor stack | `BNE-L26-FS-01` … `BNE-L26-FS-05` | Level 26 IDF |
+| L21 floor stack | `BNE-L21-FS-01` … `BNE-L21-FS-03` | Level 21 IDF |
+| L27 aux | `BNE-L27-AUX-03`, `BNE-L27-AUX-01`, `BNE-L27-AUX-02` | Level 27 Main Comms Room |
+| L27 core 9500 | `BNE-L27-CORE-01`, `BNE-L27-CORE-02` | Level 27 Main Comms Room |
 
 ## Drivers
 
-1. **Simulator (default)** — two seeded 48-port fake 9300s (`CS-BLD-A-AS01`, `CS-BLD-B-AS01`) with mixed purposes, some down, some shutdown, MAC/IP/ISE, named VLANs, and lab connected-uptime stamps. Seed is idempotent.
+1. **Simulator (default)** — seeded 48-port fake switches: two lab boxes (`CS-BLD-A-AS01`, `CS-BLD-B-AS01`) plus the **Brisbane office template** (20 switches, names below). Mixed purposes, some down, some shutdown, MAC/IP/ISE, named VLANs, and lab connected-uptime stamps. Seed is idempotent. Driver stays `simulator` unless you override a row.
 2. **CiscoIOSXE** — RESTCONF structured reads/writes; Netmiko SSH fallback for bounce / shutdown / VLAN; SNMP optional for lightweight ifOperStatus. **No connection is opened** unless the switch row has management IP + username + password. Missing secrets stay on the simulator.
 
 `SWITCHEROO_DRIVER=cisco_iosxe` is global; a per-switch override exists on the inventory form.
@@ -169,6 +245,7 @@ python -m pytest --timeout=30 --timeout-method=thread
 ## Project layout
 
 ```
+scripts/       Launch Control, install-service.ps1 / uninstall-service.ps1, WinSW wrapper
 app/            FastAPI app (uvicorn app.main:app)
 app/drivers/    SwitchDriver: simulator + cisco_iosxe + ServiceNow Table API + Teams webhook (dry-run default)
 docs/           IAM / ServiceNow POC brief, Teams webhook setup, security brief for Cyber
@@ -183,6 +260,7 @@ Cursor agents: **[`.cursor/skills/hardening/SKILL.md`](.cursor/skills/hardening/
 
 ## Gaps (v1)
 
+- Installing the Windows service cannot be proven in un-elevated CI. On a real box run the elevated `install-service.ps1` command above; expected: service Running and `/health` ok.
 - Entra ID / SSO is not implemented (local users only).
 - ServiceNow live Table API is implemented but **off** until an integration user exists. Arup incident `state` / `close_code` values are unverified.
 - Real 9300 YANG paths may need site-specific adjustment once RESTCONF is pointed at a lab switch.
