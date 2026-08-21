@@ -331,8 +331,23 @@ def seed(db: Session) -> dict[str, int]:
 
     _seed_brisbane_patching(db)
 
+    rack_stats = {"sites": 0, "racks": 0, "items": 0, "types": 0}
+    try:
+        from app.services.rack_design import ensure_default_rack_permissions
+        from app.services.rack_import import import_brisbane_layout
+
+        rack_stats = import_brisbane_layout(db)
+        ensure_default_rack_permissions(db)
+    except Exception:  # noqa: BLE001
+        log.exception("Rack design seed failed (continuing without elevations)")
+
     db.commit()
-    return {"users": created_users, "switches": created_switches}
+    return {
+        "users": created_users,
+        "switches": created_switches,
+        "rack_sites": rack_stats.get("sites", 0),
+        "rack_items": rack_stats.get("items", 0),
+    }
 
 
 def _backfill_link_uptime(switch: Switch) -> None:

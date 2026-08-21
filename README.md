@@ -144,10 +144,12 @@ After seed, **restart the Switcheroo Windows service** so the running process hy
 | --- | --- |
 | Home (Brisbane racks + lab cards) | http://127.0.0.1:8080/ |
 | Brisbane office layout | http://127.0.0.1:8080/offices/brisbane |
+| **Rack Design** (Albert St elevations) | http://127.0.0.1:8080/racks |
 | Example floor member faceplate | home → **BNE-L27-FS-01** (or Inventory) |
 | Example aux (top of aux rack is #3) | **BNE-L27-AUX-03** |
 | Example 9500 core | **BNE-L27-CORE-01** |
 | Auto-approve office **Brisbane** | http://127.0.0.1:8080/admin/policies |
+| Rack Design permissions (Networks) | http://127.0.0.1:8080/admin/rack-permissions |
 
 **How it looks**
 
@@ -155,6 +157,20 @@ After seed, **restart the Switcheroo Windows service** so the running process hy
 - **Level 27 Main Comms Room:** three columns — L27 floor stack (those 7 live in the MCR), aux stack, core 9500 stack.
 - **Aux physical order** (top → bottom): **#3, #1, #2** (`BNE-L27-AUX-03`, `BNE-L27-AUX-01`, `BNE-L27-AUX-02`). `rack_order` stores that, so the UI does not sort 1-2-3.
 - **L26 / L21** floor stacks are their own IDFs (not inside the MCR). Click a mini chassis for the existing full faceplate.
+
+**Rack Design** (separate from the switch-stack “racks” on the Brisbane page): seed imports `app/seed_data/Brisbane_Albert_St_Rack_Layout.xlsx` into editable elevations (MCR L27 four racks, FDR L26, FDR L21). RU numbering matches the workbook — **high RU at the top, RU 1 at the bottom**. Front/back faces, place/move/edit gear from a category catalog.
+
+Rack capabilities are per user (Networks has all of them):
+
+| Capability | Lets you |
+| --- | --- |
+| `rack_view` | See sites and elevations |
+| `rack_edit_layout` | Place, move, rename, and remove gear |
+| `rack_manage_racks` | Create sites and racks, set the **RU limit**, rename or delete a rack |
+| `rack_manage_catalog` | Add catalog categories and item types |
+| `rack_manage_permissions` | Grant the above |
+
+CS is seeded with **view + edit layout**. Networks toggles the rest under **Access → Rack permissions**. Shrinking a rack's RU limit below gear that is already placed is refused and names the blocking RU. Cable tracing and a fuller device DB are listed in `planned-improvements.md`.
 
 **Naming (Networks can rename)**
 

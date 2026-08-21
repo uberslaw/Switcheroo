@@ -307,3 +307,124 @@ class CablePath(Base):
     to_id: Mapped[int] = mapped_column(Integer, default=0)
     length_m: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     path_note: Mapped[str] = mapped_column(String(256), default="")
+
+
+# --- Rack Design (editable elevations) ---
+
+RACK_CAP_VIEW = "rack_view"
+RACK_CAP_EDIT_LAYOUT = "rack_edit_layout"
+RACK_CAP_MANAGE_CATALOG = "rack_manage_catalog"
+RACK_CAP_MANAGE_RACKS = "rack_manage_racks"
+RACK_CAP_MANAGE_PERMISSIONS = "rack_manage_permissions"
+RACK_CAPABILITIES = (
+    RACK_CAP_VIEW,
+    RACK_CAP_EDIT_LAYOUT,
+    RACK_CAP_MANAGE_CATALOG,
+    RACK_CAP_MANAGE_RACKS,
+    RACK_CAP_MANAGE_PERMISSIONS,
+)
+
+RACK_FACE_FRONT = "front"
+RACK_FACE_BACK = "back"
+RACK_FACE_BOTH = "both"
+
+RACK_MOUNT_RU = "ru"
+RACK_MOUNT_SIDE_PDU = "side_pdu"
+
+
+class RackSite(Base):
+    __tablename__ = "rack_sites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    racks: Mapped[list[Rack]] = relationship(back_populates="site", order_by="Rack.sort_order")
+
+
+class Rack(Base):
+    __tablename__ = "racks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("rack_sites.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(128), index=True)
+    floor: Mapped[str] = mapped_column(String(64), default="")
+    room: Mapped[str] = mapped_column(String(128), default="")
+    ru_height: Mapped[int] = mapped_column(Integer, default=45)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    site: Mapped[RackSite] = relationship(back_populates="racks")
+    items: Mapped[list[RackItem]] = relationship(back_populates="rack", cascade="all, delete-orphan")
+
+
+class RackItemCategory(Base):
+    __tablename__ = "rack_item_categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    silhouette: Mapped[str] = mapped_column(String(32), default="generic")
+
+    types: Mapped[list[RackItemType]] = relationship(back_populates="category", order_by="RackItemType.name")
+
+
+class RackItemType(Base):
+    """Reusable catalog entry (pick-and-place). Photos/drawings come later."""
+
+    __tablename__ = "rack_item_types"
+    __table_args__ = (UniqueConstraint("category_id", "name", name="uq_rack_type_cat_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("rack_item_categories.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(256), index=True)
+    default_ru_height: Mapped[int] = mapped_column(Integer, default=1)
+    default_face: Mapped[str] = mapped_column(String(16), default=RACK_FACE_FRONT)
+    default_mount: Mapped[str] = mapped_column(String(16), default=RACK_MOUNT_RU)
+    default_network_ports: Mapped[int] = mapped_column(Integer, default=0)
+    default_power_ports: Mapped[int] = mapped_column(Integer, default=0)
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    category: Mapped[RackItemCategory] = relationship(back_populates="types")
+    items: Mapped[list[RackItem]] = relationship(back_populates="item_type")
+
+
+class RackItem(Base):
+    """One placed instance on a rack elevation (movable)."""
+
+    __tablename__ = "rack_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    rack_id: Mapped[int] = mapped_column(ForeignKey("racks.id", ondelete="CASCADE"), index=True)
+    item_type_id: Mapped[int] = mapped_column(ForeignKey("rack_item_types.id", ondelete="RESTRICT"), index=True)
+    name: Mapped[str] = mapped_column(String(256), default="")
+    ru_start: Mapped[int] = mapped_column(Integer, default=1)  # top RU of the item (doc numbering)
+    ru_height: Mapped[int] = mapped_column(Integer, default=1)
+    face: Mapped[str] = mapped_column(String(16), default=RACK_FACE_FRONT)
+    mount: Mapped[str] = mapped_column(String(16), default=RACK_MOUNT_RU)
+    side: Mapped[str] = mapped_column(String(16), default="")  # left/right for side_pdu
+    management_ip: Mapped[str] = mapped_column(String(64), default="")
+    network_ports: Mapped[int] = mapped_column(Integer, default=0)
+    power_ports: Mapped[int] = mapped_column(Integer, default=0)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    rack: Mapped[Rack] = relationship(back_populates="items")
+    item_type: Mapped[RackItemType] = relationship(back_populates="items")
+
+    @property
+    def ru_end(self) -> int:
+        """Lowest RU occupied (bottom), inclusive. Doc style: high RU at top."""
+        return max(1, self.ru_start - self.ru_height + 1)
+
+
+class UserRackPermission(Base):
+    __tablename__ = "user_rack_permissions"
+    __table_args__ = (UniqueConstraint("user_id", "capability", name="uq_user_rack_cap"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    capability: Mapped[str] = mapped_column(String(64), index=True)
+
+    user: Mapped[User] = relationship()

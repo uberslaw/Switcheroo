@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Rack Design · Switcheroo{% endblock %}
+{% block body %}
+<h1>Rack Design</h1>
+<p class="muted">Editable rack elevations (front/back). Seeded from the Albert St move-in workbook; RU numbering matches the document — high RU at the top, RU&nbsp;1 at the bottom.</p>
+
+{% if not sites %}
+<p class="flash flash-info">No rack sites yet. Restart Switcheroo so seed can import the Albert St layout, or ask Networks to import.</p>
+{% else %}
+<div class="rack-site-grid">
+  {% for site in sites %}
+  <a class="rack-site-card" href="/racks/sites/{{ site.id }}">
+    <strong>{{ site.name }}</strong>
+    <span class="muted">{{ site.racks|length }} rack{{ 's' if site.racks|length != 1 else '' }}</span>
+    {% if site.notes %}<span class="muted site-notes">{{ site.notes }}</span>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if can_manage_racks %}
+<section class="panel" style="margin-top:1.25rem">
+  <h2>Add a site</h2>
+  <form method="post" action="/racks/sites" class="inline-vlan">
+    <input name="name" required placeholder="site name (e.g. Sydney George St)">
+    <input name="notes" placeholder="notes (optional)">
+    <button class="btn btn-small btn-primary" type="submit">Create site</button>
+  </form>
+</section>
+{% endif %}
+
+{% if user.role == 'networks' %}
+<p class="muted" style="margin-top:1.25rem"><a href="/admin/rack-permissions">Manage rack permissions</a></p>
+{% endif %}
+{% endblock %}

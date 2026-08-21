@@ -15,7 +15,7 @@ from app.diagnostics import clear_pid_file, sync_log_level, write_pid_file
 from app.logging_setup import setup_logging
 from app.poller import start_poller, stop_poller
 from app.prereq import check_prerequisites
-from app.routers import admin, api, pages
+from app.routers import admin, api, pages, racks
 from app.seed import seed
 
 log = logging.getLogger("switcheroo")
@@ -59,6 +59,7 @@ def create_app() -> FastAPI:
     application.include_router(pages.router)
     application.include_router(api.router)
     application.include_router(admin.router)
+    application.include_router(racks.router)
 
     @application.get("/health")
     def health() -> dict:

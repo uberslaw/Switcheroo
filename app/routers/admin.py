@@ -10,6 +10,7 @@ from app.db import get_db
 from app.drivers.simulator import simulator
 from app.models import (
     PORT_PURPOSES,
+    RACK_CAPABILITIES,
     ROLE_CS,
     ROLE_NETWORKS,
     STATUS_PENDING,
@@ -18,10 +19,12 @@ from app.models import (
     Switch,
     SwitchVlan,
     User,
+    UserRackPermission,
     UserSwitchPermission,
 )
 from app.services.auto_approve import global_key, is_enabled, office_key, requestor_key, set_policy
 from app.services.office import switch_sort_key, switches_grouped_by_office
+from app.services import rack_design as rd
 from app.services.request_service import RequestError, approve_request, reject_request
 from app.templating import flash, render
 
@@ -480,3 +483,47 @@ def user_create(
     db.commit()
     flash(request, f"Created user {username.strip()}.", "ok")
     return RedirectResponse("/admin/permissions", status_code=303)
+
+
+@router.get("/rack-permissions")
+def rack_permissions(request: Request, db: Session = Depends(get_db), user: User = Depends(_admin)):
+    rd.require_cap(db, user, rd.RACK_CAP_MANAGE_PERMISSIONS)
+    users = list(db.scalars(select(User).order_by(User.username)).all())
+    links = {(p.user_id, p.capability) for p in db.scalars(select(UserRackPermission)).all()}
+    return render(
+        request,
+        "admin/rack_permissions.html",
+        user=user,
+        users=users,
+        capabilities=RACK_CAPABILITIES,
+        cap_labels=rd.CAP_LABELS,
+        links=links,
+    )
+
+
+@router.post("/rack-permissions")
+def rack_permission_set(
+    request: Request,
+    user_id: int = Form(...),
+    capability: str = Form(...),
+    granted: str = Form("0"),
+    db: Session = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    rd.require_cap(db, user, rd.RACK_CAP_MANAGE_PERMISSIONS)
+    target = db.get(User, user_id)
+    if target is None:
+        flash(request, "User not found.", "error")
+        return RedirectResponse("/admin/rack-permissions", status_code=303)
+    if target.role == ROLE_NETWORKS:
+        flash(request, "Networks users already have all rack capabilities.", "info")
+        return RedirectResponse("/admin/rack-permissions", status_code=303)
+    try:
+        rd.set_user_capability(db, user_id, capability, granted == "1")
+        db.commit()
+        verb = "Granted" if granted == "1" else "Revoked"
+        flash(request, f"{verb} {rd.CAP_LABELS.get(capability, capability)} for {target.username}.", "ok")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse("/admin/rack-permissions", status_code=303)

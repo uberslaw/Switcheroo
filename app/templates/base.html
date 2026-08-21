@@ -21,12 +21,13 @@
     <nav class="nav">
       <a href="/" class="{% if request.url.path == '/' or request.url.path.startswith('/offices/') %}active{% endif %}">Switches</a>
       <a href="/requests" class="{% if request.url.path == '/requests' %}active{% endif %}">Requests</a>
+      <a href="/racks" class="{% if request.url.path.startswith('/racks') %}active{% endif %}">Rack Design</a>
       {% if user.role == 'networks' %}
       <a href="/admin/inventory" class="{% if '/admin/inventory' in request.url.path or '/admin/switches' in request.url.path %}active{% endif %}">Inventory</a>
       <a href="/admin/approvals" class="{% if '/admin/approvals' in request.url.path %}active{% endif %}">Approvals</a>
       <a href="/admin/policies" class="{% if '/admin/policies' in request.url.path %}active{% endif %}">Policies</a>
       <a href="/admin/history" class="{% if '/admin/history' in request.url.path %}active{% endif %}">History</a>
-      <a href="/admin/permissions" class="{% if '/admin/permissions' in request.url.path %}active{% endif %}">Access</a>
+      <a href="/admin/permissions" class="{% if '/admin/permissions' in request.url.path or '/admin/rack-permissions' in request.url.path %}active{% endif %}">Access</a>
       {% endif %}
     </nav>
     <div class="who">
