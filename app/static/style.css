@@ -833,7 +833,7 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
   width: 100%;
 }
 .rj45.port-available {
-  box-shadow: 0 0 0 2px #7ae85a;
+  box-shadow: 0 0 0 1px #7ae85a;
   border-color: #7ae85a;
 }
 .rj45.port-patched {
@@ -986,6 +986,6 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
   box-shadow: 0 0 6px rgba(122, 232, 90, 0.45);
 }
 .dot.port-available {
-  box-shadow: 0 0 6px #8cff6a, 0 0 0 2px #c9e07b;
+  box-shadow: 0 0 6px #8cff6a, 0 0 0 1px #c9e07b;
 }
 .avail-uplink, .avail-faulty, .avail-shut { opacity: 0.55; }
