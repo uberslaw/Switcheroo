@@ -95,6 +95,69 @@ def create_rack(
     return RedirectResponse(f"/racks/sites/{site_id}?face={face}", status_code=303)
 
 
+@router.post("/sites/{site_id}/update")
+def update_site(
+    site_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+    name: str = Form(...),
+    notes: str = Form(""),
+):
+    rd.require_cap(db, user, RACK_CAP_MANAGE_RACKS)
+    site = rd.get_site(db, site_id)
+    try:
+        rd.update_site(db, site, name=name, notes=notes)
+        db.commit()
+        flash(request, "Site updated.", "ok")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse(f"/racks/sites/{site_id}", status_code=303)
+
+
+@router.post("/sites/{site_id}/delete")
+def delete_site(
+    site_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+):
+    rd.require_cap(db, user, RACK_CAP_MANAGE_RACKS)
+    site = rd.get_site(db, site_id)
+    name = site.name
+    try:
+        rd.delete_site(db, site)
+        db.commit()
+        flash(request, f"Removed site {name}.", "ok")
+        return RedirectResponse("/racks", status_code=303)
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse(f"/racks/sites/{site_id}", status_code=303)
+
+
+@router.post("/{rack_id}/shift")
+def shift_rack(
+    rack_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+    direction: str = Form("right"),
+    face: str = Form(RACK_FACE_FRONT),
+):
+    rd.require_cap(db, user, RACK_CAP_MANAGE_RACKS)
+    rack = rd.get_rack(db, rack_id)
+    site_id = rack.site_id
+    try:
+        rd.shift_rack(db, rack, direction=1 if direction == "right" else -1)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse(f"/racks/sites/{site_id}?face={face}", status_code=303)
+
+
 @router.post("/sites/{site_id}/reimport")
 def reimport_site(
     site_id: int,

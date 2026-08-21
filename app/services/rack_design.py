@@ -242,6 +242,57 @@ def delete_rack(db: Session, rack: Rack) -> None:
     db.flush()
 
 
+def shift_rack(db: Session, rack: Rack, *, direction: int) -> Rack:
+    """Swap a rack with its neighbour so racks can be ordered as they stand."""
+    siblings = list(
+        db.scalars(
+            select(Rack).where(Rack.site_id == rack.site_id).order_by(Rack.sort_order, Rack.name)
+        ).all()
+    )
+    # Normalise first: imported racks can share a sort_order, which would make
+    # a swap a no-op.
+    for index, row in enumerate(siblings):
+        row.sort_order = (index + 1) * 10
+    db.flush()
+    position = next(i for i, row in enumerate(siblings) if row.id == rack.id)
+    target = position + (1 if direction > 0 else -1)
+    if not 0 <= target < len(siblings):
+        return rack
+    neighbour = siblings[target]
+    rack.sort_order, neighbour.sort_order = neighbour.sort_order, rack.sort_order
+    db.flush()
+    return rack
+
+
+def update_site(
+    db: Session, site: RackSite, *, name: str | None = None, notes: str | None = None
+) -> RackSite:
+    if name is not None:
+        clean = name.strip()
+        if not clean:
+            raise HTTPException(status_code=400, detail="Site name is required")
+        clash = db.scalar(select(RackSite).where(RackSite.name == clean, RackSite.id != site.id))
+        if clash is not None:
+            raise HTTPException(status_code=400, detail=f"Another site is already called {clean}")
+        site.name = clean
+    if notes is not None:
+        site.notes = notes.strip()
+    db.flush()
+    return site
+
+
+def delete_site(db: Session, site: RackSite) -> None:
+    """Refuse while racks remain, so a whole floor cannot vanish on one click."""
+    racks = list(db.scalars(select(Rack).where(Rack.site_id == site.id)).all())
+    if racks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{site.name} still has {len(racks)} rack{'s' if len(racks) != 1 else ''} — delete those first",
+        )
+    db.delete(site)
+    db.flush()
+
+
 def create_category(db: Session, *, name: str, silhouette: str = "generic") -> RackItemCategory:
     clean = name.strip()
     if not clean:

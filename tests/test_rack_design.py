@@ -337,6 +337,70 @@ def test_cs_can_edit_layout_but_not_create_racks(cs_client, seeded_db):
     assert "Rack settings" not in page.text
 
 
+def test_shift_rack_reorders_left_to_right(seeded_db):
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
+    order = lambda: [  # noqa: E731
+        r.name
+        for r in seeded_db.scalars(
+            select(Rack).where(Rack.site_id == site.id).order_by(Rack.sort_order, Rack.name)
+        ).all()
+    ]
+    before = order()
+    second = seeded_db.scalar(select(Rack).where(Rack.site_id == site.id, Rack.name == before[1]))
+    rd.shift_rack(seeded_db, second, direction=-1)
+    seeded_db.flush()
+    after = order()
+    assert after[0] == before[1]
+    assert after[1] == before[0]
+    assert sorted(after) == sorted(before), "shifting must not add or drop racks"
+
+
+def test_shift_rack_at_edge_is_a_noop(seeded_db):
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
+    racks = list(
+        seeded_db.scalars(
+            select(Rack).where(Rack.site_id == site.id).order_by(Rack.sort_order, Rack.name)
+        ).all()
+    )
+    first = racks[0]
+    rd.shift_rack(seeded_db, first, direction=-1)
+    seeded_db.flush()
+    again = list(
+        seeded_db.scalars(
+            select(Rack).where(Rack.site_id == site.id).order_by(Rack.sort_order, Rack.name)
+        ).all()
+    )
+    assert again[0].id == first.id
+
+
+def test_rename_site_and_refuse_delete_while_racks_exist(seeded_db):
+    from fastapi import HTTPException
+
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
+    rd.update_site(seeded_db, site, name="Brisbane Albert Street")
+    assert site.name == "Brisbane Albert Street"
+    try:
+        rd.delete_site(seeded_db, site)
+        raise AssertionError("expected refusal")
+    except HTTPException as exc:
+        assert "still has" in str(exc.detail)
+
+
+def test_delete_empty_site(seeded_db):
+    site = rd.create_site(seeded_db, name="Empty site")
+    seeded_db.flush()
+    rd.delete_site(seeded_db, site)
+    seeded_db.flush()
+    assert seeded_db.scalar(select(RackSite).where(RackSite.name == "Empty site")) is None
+
+
+def test_cs_cannot_reorder_or_rename_site(cs_client, seeded_db):
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
+    rack = seeded_db.scalar(select(Rack).where(Rack.name == "FDR L26"))
+    assert cs_client.post(f"/racks/{rack.id}/shift", data={"direction": "left"}, follow_redirects=False).status_code == 403
+    assert cs_client.post(f"/racks/sites/{site.id}/update", data={"name": "Nope"}, follow_redirects=False).status_code == 403
+
+
 def test_catalog_page_lists_types_with_usage(networks_client, seeded_db):
     page = networks_client.get("/racks/catalog")
     assert page.status_code == 200

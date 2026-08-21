@@ -14,6 +14,22 @@
   </div>
 </div>
 
+{% if can_manage_racks %}
+<details class="panel site-settings">
+  <summary>Site settings</summary>
+  <form method="post" action="/racks/sites/{{ site.id }}/update" class="inline-vlan">
+    <input name="name" value="{{ site.name }}" required>
+    <input name="notes" value="{{ site.notes }}" placeholder="notes">
+    <button class="btn btn-small btn-primary" type="submit">Save site</button>
+  </form>
+  <form method="post" action="/racks/sites/{{ site.id }}/delete" class="reimport-form"
+        onsubmit="return confirm('Delete the site {{ site.name }}?');">
+    <button class="btn btn-small btn-danger" type="submit">Delete site</button>
+    <span class="muted">Only possible once every rack here is deleted.</span>
+  </form>
+</details>
+{% endif %}
+
 <div class="elev-row">
   {% for elev in elevations %}
   {% set rack = elev.rack %}
@@ -22,6 +38,20 @@
       <div>
         <h2><a href="/racks/{{ rack.id }}?face={{ face }}">{{ rack.name }}</a></h2>
         <div class="muted">{{ rack.floor }}{% if rack.room %} · {{ rack.room }}{% endif %} · {{ rack.ru_height }}U</div>
+        {% if can_manage_racks %}
+        <div class="rack-shift">
+          <form method="post" action="/racks/{{ rack.id }}/shift">
+            <input type="hidden" name="face" value="{{ face }}">
+            <input type="hidden" name="direction" value="left">
+            <button class="btn btn-small" type="submit" title="Move this rack left">←</button>
+          </form>
+          <form method="post" action="/racks/{{ rack.id }}/shift">
+            <input type="hidden" name="face" value="{{ face }}">
+            <input type="hidden" name="direction" value="right">
+            <button class="btn btn-small" type="submit" title="Move this rack right">→</button>
+          </form>
+        </div>
+        {% endif %}
       </div>
     </header>
     <div class="elev-frame">
