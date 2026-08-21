@@ -326,8 +326,10 @@ def move_item(
     db: Session = Depends(get_db),
     user: User = Depends(_user),
     ru_start: int = Form(...),
-    face: str = Form(RACK_FACE_FRONT),
+    face: str = Form(""),
+    side: str = Form(""),
     ru_height: int = Form(0),
+    view: str = Form(RACK_FACE_FRONT),
 ):
     rd.require_cap(db, user, RACK_CAP_EDIT_LAYOUT)
     item = db.get(RackItem, item_id)
@@ -340,15 +342,17 @@ def move_item(
             db,
             item,
             ru_start=ru_start,
-            face=face,
+            # Blank keeps the item's own face; the view is only for redirecting.
+            face=face or None,
             ru_height=ru_height or None,
+            side=side or None,
         )
         db.commit()
         flash(request, "Item moved.", "ok")
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         flash(request, str(getattr(exc, "detail", None) or exc), "error")
-    return RedirectResponse(f"/racks/{rack_id}?face={face}", status_code=303)
+    return RedirectResponse(f"/racks/{rack_id}?face={view}", status_code=303)
 
 
 @router.post("/items/{item_id}/update")

@@ -395,10 +395,34 @@ def place_item(
     return item
 
 
-def move_item(db: Session, item: RackItem, *, ru_start: int, face: str | None = None, ru_height: int | None = None) -> RackItem:
+def move_item(
+    db: Session,
+    item: RackItem,
+    *,
+    ru_start: int,
+    face: str | None = None,
+    ru_height: int | None = None,
+    side: str | None = None,
+) -> RackItem:
     rack = get_rack(db, item.rack_id)
+    if face is not None and face not in (RACK_FACE_FRONT, RACK_FACE_BACK, RACK_FACE_BOTH):
+        raise HTTPException(status_code=400, detail="Face must be front, back or both")
     new_face = face or item.face
     new_height = item.ru_height if ru_height is None else ru_height
+    if item.mount == RACK_MOUNT_SIDE_PDU:
+        # Vertical PDUs hang off the side rail, so they take no RU slot and
+        # cannot collide with RU-mounted gear.
+        if side is not None:
+            if side not in ("left", "right"):
+                raise HTTPException(status_code=400, detail="Side must be left or right")
+            item.side = side
+        if not 1 <= ru_start <= rack.ru_height:
+            raise HTTPException(status_code=400, detail="Position must be inside the rack RU range")
+        item.ru_start = ru_start
+        item.face = new_face
+        item.ru_height = 0
+        db.flush()
+        return item
     if item.mount == RACK_MOUNT_RU:
         hit = find_collision(
             db,

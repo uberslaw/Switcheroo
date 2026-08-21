@@ -78,9 +78,15 @@
 
     <section class="panel">
       <h2>Edit / move / remove</h2>
-      {% for item in rack.items if item.mount == 'ru' %}
+      <p class="muted">RU-mounted gear first, then vertical PDUs on the side rails.</p>
+      {% for item in rack.items|sort(attribute='mount')|sort(attribute='ru_start', reverse=true) %}
       <details class="item-edit" id="edit-{{ item.id }}">
-        <summary>{{ item.name }} <span class="muted">RU{{ item.ru_start }} · {{ item.face }}</span></summary>
+        <summary>{{ item.name }}
+          <span class="muted">
+            {%- if item.mount == 'side_pdu' %}vertical · {{ item.side or 'left' }} · {{ item.face }}
+            {%- else %}RU{{ item.ru_start }} · {{ item.face }}{% endif %}
+          </span>
+        </summary>
         <form method="post" action="/racks/items/{{ item.id }}/update" class="stack-form">
           <input type="hidden" name="face" value="{{ face }}">
           <label>Name <input name="name" value="{{ item.name }}"></label>
@@ -91,18 +97,35 @@
           <button class="btn btn-small btn-primary" type="submit">Save</button>
         </form>
         <form method="post" action="/racks/items/{{ item.id }}/move" class="stack-form inline-move">
-          <input type="hidden" name="face" value="{{ face }}">
+          <input type="hidden" name="view" value="{{ face }}">
+          {% if item.mount == 'side_pdu' %}
+          <label>Side
+            <select name="side">
+              <option value="left"{% if item.side != 'right' %} selected{% endif %}>left rail</option>
+              <option value="right"{% if item.side == 'right' %} selected{% endif %}>right rail</option>
+            </select>
+          </label>
+          <label>Position (RU) <input type="number" name="ru_start" value="{{ item.ru_start }}" min="1" max="{{ rack.ru_height }}"></label>
+          {% else %}
           <label>Move top RU <input type="number" name="ru_start" value="{{ item.ru_start }}" min="1" max="{{ rack.ru_height }}"></label>
           <label>Height <input type="number" name="ru_height" value="{{ item.ru_height }}" min="1"></label>
+          {% endif %}
+          <label>Face
+            <select name="face">
+              <option value="front"{% if item.face == 'front' %} selected{% endif %}>front</option>
+              <option value="back"{% if item.face == 'back' %} selected{% endif %}>back</option>
+              <option value="both"{% if item.face == 'both' %} selected{% endif %}>both</option>
+            </select>
+          </label>
           <button class="btn btn-small" type="submit">Move</button>
         </form>
-        <form method="post" action="/racks/items/{{ item.id }}/delete" onsubmit="return confirm('Remove this item?');">
+        <form method="post" action="/racks/items/{{ item.id }}/delete" onsubmit="return confirm('Remove {{ item.name }}?');">
           <input type="hidden" name="face" value="{{ face }}">
           <button class="btn btn-small btn-danger" type="submit">Remove</button>
         </form>
       </details>
       {% else %}
-      <p class="muted">No RU-mounted items on this rack yet.</p>
+      <p class="muted">Nothing placed on this rack yet.</p>
       {% endfor %}
     </section>
     {% endif %}

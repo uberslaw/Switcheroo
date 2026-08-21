@@ -265,6 +265,60 @@ def test_create_site_and_catalog_type(networks_client, seeded_db):
     assert item_type.default_network_ports == 4
 
 
+def test_side_pdu_can_be_renamed_and_moved(seeded_db):
+    """Vertical PDUs were display-only; they must be editable like other gear."""
+    rack = seeded_db.scalar(select(Rack).where(Rack.name == "FDR L26"))
+    pdu = next(i for i in rd.get_rack(seeded_db, rack.id).items if i.mount == "side_pdu")
+    original_side = pdu.side
+    rd.move_item(seeded_db, pdu, ru_start=pdu.ru_start, side="right" if original_side != "right" else "left")
+    seeded_db.flush()
+    assert pdu.side != original_side
+    assert pdu.ru_height == 0, "a side PDU must never take an RU slot"
+
+
+def test_side_pdu_ignores_ru_collisions(seeded_db):
+    """A vertical PDU shares no RU slot, so it must not collide with RU gear."""
+    rack = rd.get_rack(seeded_db, seeded_db.scalar(select(Rack).where(Rack.name == "FDR L26")).id)
+    pdu = next(i for i in rack.items if i.mount == "side_pdu")
+    occupied = next(i for i in rack.items if i.mount == "ru")
+    rd.move_item(seeded_db, pdu, ru_start=occupied.ru_start, side=pdu.side)
+    seeded_db.flush()
+    assert pdu.ru_start == occupied.ru_start
+
+
+def test_move_keeps_item_face_when_not_specified(seeded_db):
+    """Regression: the move form used to post the view face and flip the item."""
+    rack = rd.get_rack(seeded_db, seeded_db.scalar(select(Rack).where(Rack.name == "FDR L26")).id)
+    back_item = next((i for i in rack.items if i.mount == "ru" and i.face == "back"), None)
+    if back_item is None:
+        blank = seeded_db.scalar(select(RackItemType).where(RackItemType.name == "Blanking - Spare"))
+        back_item = rd.place_item(
+            seeded_db, rack, item_type_id=blank.id, name="Back blank", ru_start=44, ru_height=1, face="back"
+        )
+        seeded_db.flush()
+    rd.move_item(seeded_db, back_item, ru_start=back_item.ru_start, face=None)
+    assert back_item.face == "back"
+
+
+def test_move_can_change_face(seeded_db):
+    rack = rd.get_rack(seeded_db, seeded_db.scalar(select(Rack).where(Rack.name == "FDR L26")).id)
+    item = next(i for i in rack.items if i.mount == "ru" and i.face == "front")
+    rd.move_item(seeded_db, item, ru_start=item.ru_start, face="back")
+    assert item.face == "back"
+
+
+def test_move_rejects_bad_face(seeded_db):
+    from fastapi import HTTPException
+
+    rack = rd.get_rack(seeded_db, seeded_db.scalar(select(Rack).where(Rack.name == "FDR L26")).id)
+    item = next(i for i in rack.items if i.mount == "ru")
+    try:
+        rd.move_item(seeded_db, item, ru_start=item.ru_start, face="sideways")
+        raise AssertionError("expected rejection")
+    except HTTPException as exc:
+        assert "front, back or both" in str(exc.detail)
+
+
 def test_cs_can_edit_layout_but_not_create_racks(cs_client, seeded_db):
     """Seeded CS gets view + edit_layout, not rack_manage_racks."""
     site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
