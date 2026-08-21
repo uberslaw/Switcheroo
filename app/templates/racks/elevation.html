@@ -28,16 +28,11 @@
           <tr class="{% if row.item %}elev-item sil-{{ row.item.item_type.category.silhouette if row.item.item_type and row.item.item_type.category else 'generic' }}{% elif row.continuation %}elev-cont{% else %}elev-empty{% endif %}">
             <td class="elev-ru">RU{{ row.ru }}</td>
             {% if row.item %}
-            <td class="elev-cell" rowspan="{{ row.item.ru_height }}" id="item-{{ row.item.id }}">
-              <div class="elev-label">{{ row.item.name }}</div>
-              {% if row.item.management_ip %}<div class="elev-meta">IP {{ row.item.management_ip }}</div>{% endif %}
-              {% if row.item.network_ports %}<div class="elev-meta">{{ row.item.network_ports }} net ports</div>{% endif %}
-              {% if row.item.ru_height > 1 %}<div class="elev-meta">{{ row.item.ru_height }}U · RU{{ row.item.ru_start }}–RU{{ row.item.ru_end }}</div>{% endif %}
-              {% if can_edit %}
-              <div class="elev-actions">
-                <a class="btn btn-small" href="#edit-{{ row.item.id }}">Edit</a>
-              </div>
-              {% endif %}
+            <td class="elev-cell" rowspan="{{ row.item.ru_height }}" id="item-{{ row.item.id }}"
+                title="{{ row.item.name }}{% if row.item.ru_height > 1 %} · {{ row.item.ru_height }}U RU{{ row.item.ru_start }}–RU{{ row.item.ru_end }}{% endif %}{% if row.item.management_ip %} · IP {{ row.item.management_ip }}{% endif %}{% if row.item.network_ports %} · {{ row.item.network_ports }} ports{% endif %}">
+              <div class="elev-label">{% if can_edit %}<a href="#edit-{{ row.item.id }}">{{ row.item.name }}</a>{% else %}{{ row.item.name }}{% endif %}</div>
+              {% if row.item.ru_height >= 2 and row.item.management_ip %}<div class="elev-meta">IP {{ row.item.management_ip }}</div>{% endif %}
+              {% if row.item.ru_height >= 3 %}<div class="elev-meta">{{ row.item.ru_height }}U · RU{{ row.item.ru_start }}–RU{{ row.item.ru_end }}{% if row.item.network_ports %} · {{ row.item.network_ports }} ports{% endif %}</div>{% endif %}
             </td>
             {% elif not row.continuation %}
             <td class="elev-cell elev-air"></td>

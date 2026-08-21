@@ -1121,7 +1121,11 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
   padding: 0.55rem 0.55rem 0.7rem;
 }
 .elev-rack-solo { max-width: none; flex: 1 1 auto; min-width: 280px; }
-.elev-rack-head h2 { margin: 0 0 0.15rem; font-size: 1rem; }
+/* Fixed head height keeps every rack's RU1 on the same line even when a rack
+   name wraps to two lines. */
+.elev-rack-head { min-height: 3.2rem; overflow: hidden; }
+.elev-rack-solo .elev-rack-head { min-height: 0; }
+.elev-rack-head h2 { margin: 0 0 0.15rem; font-size: 1rem; line-height: 1.2; }
 .elev-frame {
   display: flex;
   gap: 0.35rem;
@@ -1140,38 +1144,60 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
   text-align: center;
 }
 .elev-pdu { margin: 0.2rem 0; }
+/* One RU is always exactly --ru-h tall. Without this, row height follows cell
+   content: a merged 27U blank squashes its RU labels, and side-by-side racks
+   drift out of step because each rack is its own table. */
 .elev-table {
+  --ru-h: 19px;
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
   font-size: 0.72rem;
   background:
     linear-gradient(90deg, #2a2e28 0 8px, transparent 8px 100%),
     linear-gradient(90deg, transparent calc(100% - 8px), #2a2e28 calc(100% - 8px)),
     #0c0e0a;
 }
-.elev-table-lg { font-size: 0.82rem; }
+.elev-table tr { height: var(--ru-h); }
+.elev-table-lg { --ru-h: 26px; font-size: 0.82rem; }
 .elev-ru {
-  width: 2.6rem;
+  width: 2.9rem;
+  height: var(--ru-h);
   font-family: var(--mono);
   font-size: 0.65rem;
+  line-height: var(--ru-h);
   color: var(--muted);
   text-align: right;
   padding: 0 0.35rem 0 0.2rem;
   border-bottom: 1px solid #1a1e14;
-  vertical-align: top;
+  vertical-align: middle;
   white-space: nowrap;
+  overflow: hidden;
 }
 .elev-cell {
   border: 1px solid #2a3222;
-  padding: 0.15rem 0.35rem;
+  padding: 0 0.35rem;
   vertical-align: middle;
   background: #1a2116;
-  min-height: 1.15rem;
+  overflow: hidden;
 }
 .elev-air { background: transparent; border-style: dashed; border-color: #252b1c; }
 .elev-empty .elev-ru { opacity: 0.55; }
-.elev-label { font-weight: 600; line-height: 1.25; }
-.elev-meta { color: var(--muted); font-size: 0.68rem; margin-top: 0.1rem; }
+.elev-label {
+  font-weight: 600;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.elev-meta {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .elev-actions { margin-top: 0.25rem; }
 .elev-item.sil-switch .elev-cell { background: #152028; border-color: #3a5068; }
 .elev-item.sil-patch .elev-cell { background: #1a2218; border-color: #4a6a38; }

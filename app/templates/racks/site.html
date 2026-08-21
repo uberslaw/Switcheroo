@@ -36,10 +36,9 @@
           <tr class="{% if row.item %}elev-item sil-{{ row.item.item_type.category.silhouette if row.item.item_type and row.item.item_type.category else 'generic' }}{% elif row.continuation %}elev-cont{% else %}elev-empty{% endif %}">
             <td class="elev-ru">RU{{ row.ru }}</td>
             {% if row.item %}
-            <td class="elev-cell" rowspan="{{ row.item.ru_height }}">
+            <td class="elev-cell" rowspan="{{ row.item.ru_height }}" title="{{ row.item.name }}{% if row.item.ru_height > 1 %} · {{ row.item.ru_height }}U RU{{ row.item.ru_start }}–RU{{ row.item.ru_end }}{% endif %}{% if row.item.management_ip %} · {{ row.item.management_ip }}{% endif %}">
               <div class="elev-label">{{ row.item.name }}</div>
-              {% if row.item.management_ip %}<div class="elev-meta">{{ row.item.management_ip }}</div>{% endif %}
-              {% if row.item.ru_height > 1 %}<div class="elev-meta">{{ row.item.ru_height }}U · RU{{ row.item.ru_start }}–RU{{ row.item.ru_end }}</div>{% endif %}
+              {% if row.item.ru_height >= 3 %}<div class="elev-meta">{{ row.item.ru_height }}U · RU{{ row.item.ru_start }}–RU{{ row.item.ru_end }}</div>{% endif %}
             </td>
             {% elif not row.continuation %}
             <td class="elev-cell elev-air"></td>
