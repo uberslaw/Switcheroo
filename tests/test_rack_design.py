@@ -265,6 +265,58 @@ def test_create_site_and_catalog_type(networks_client, seeded_db):
     assert item_type.default_network_ports == 4
 
 
+def test_placing_a_vertical_pdu_type_lands_on_a_rail(seeded_db):
+    """Regression: the place form forced mount=ru, so a vertical PDU type was
+    placed as RU-mounted gear and silently consumed an RU slot."""
+    rack = rd.get_rack(seeded_db, seeded_db.scalar(select(Rack).where(Rack.name == "FDR L21")).id)
+    pdu_type = seeded_db.scalar(
+        select(RackItemType).where(RackItemType.default_mount == "side_pdu")
+    )
+    assert pdu_type is not None
+    placed = rd.place_item(
+        seeded_db,
+        rack,
+        item_type_id=pdu_type.id,
+        name="Extra rail PDU",
+        ru_start=40,
+        ru_height=None,
+        face="back",
+        mount="",
+        side="right",
+    )
+    seeded_db.flush()
+    assert placed.mount == "side_pdu"
+    assert placed.ru_height == 0, "a rail PDU must not occupy an RU slot"
+    assert placed.side == "right"
+    elev = rd.elevation_rows(rd.get_rack(seeded_db, rack.id), "back")
+    assert any(i.id == placed.id for i in elev["side_right"])
+    assert all(r["item"] is None or r["item"].id != placed.id for r in elev["rows"])
+
+
+def test_side_pdu_with_blank_side_still_renders(seeded_db):
+    """A blank side used to match neither rail, so the item vanished."""
+    rack = rd.get_rack(seeded_db, seeded_db.scalar(select(Rack).where(Rack.name == "FDR L21")).id)
+    pdu = next(i for i in rack.items if i.mount == "side_pdu")
+    pdu.side = ""
+    seeded_db.flush()
+    elev = rd.elevation_rows(rd.get_rack(seeded_db, rack.id), pdu.face)
+    shown = [i.id for i in elev["side_left"]] + [i.id for i in elev["side_right"]]
+    assert pdu.id in shown
+
+
+def test_placing_an_ru_type_is_unaffected(seeded_db):
+    """The mount fallback must not turn ordinary gear into a rail PDU."""
+    rack = rd.get_rack(seeded_db, seeded_db.scalar(select(Rack).where(Rack.name == "FDR L21")).id)
+    blank = seeded_db.scalar(select(RackItemType).where(RackItemType.name == "Blanking - Spare"))
+    placed = rd.place_item(
+        seeded_db, rack, item_type_id=blank.id, name="Normal blank", ru_start=41, ru_height=1, face="back", mount=""
+    )
+    seeded_db.flush()
+    assert placed.mount == "ru"
+    assert placed.ru_height == 1
+    assert placed.side == ""
+
+
 def test_side_pdu_can_be_renamed_and_moved(seeded_db):
     """Vertical PDUs were display-only; they must be editable like other gear."""
     rack = seeded_db.scalar(select(Rack).where(Rack.name == "FDR L26"))

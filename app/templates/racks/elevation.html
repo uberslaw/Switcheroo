@@ -70,6 +70,12 @@
         <label>Name <input name="name" placeholder="optional override"></label>
         <label>Top RU (document) <input type="number" name="ru_start" min="1" max="{{ rack.ru_height }}" required value="{{ rack.ru_height }}"></label>
         <label>Height (U) <input type="number" name="ru_height" min="0" value="0" title="0 = use catalog default"></label>
+        <label>Side rail <span class="muted">(vertical PDU types only)</span>
+          <select name="side">
+            <option value="left">left rail</option>
+            <option value="right">right rail</option>
+          </select>
+        </label>
         <label>Mgmt IP <input name="management_ip" placeholder="optional"></label>
         <label>Notes <input name="notes"></label>
         <button class="btn btn-primary" type="submit">Place</button>
@@ -79,7 +85,9 @@
     <section class="panel">
       <h2>Edit / move / remove</h2>
       <p class="muted">RU-mounted gear first, then vertical PDUs on the side rails.</p>
-      {% for item in rack.items|sort(attribute='mount')|sort(attribute='ru_start', reverse=true) %}
+      {# Jinja sort is stable and the last key wins, so sort by RU first and
+         group by mount second to actually get RU gear before the rails. #}
+      {% for item in rack.items|sort(attribute='ru_start', reverse=true)|sort(attribute='mount') %}
       <details class="item-edit" id="edit-{{ item.id }}">
         <summary>{{ item.name }}
           <span class="muted">

@@ -494,7 +494,14 @@ def place_item(
         raise HTTPException(status_code=400, detail="Unknown item type")
     height = ru_height if ru_height is not None else (item_type.default_ru_height or 1)
     face = face or item_type.default_face or RACK_FACE_FRONT
+    # Blank means "use the catalog default", so a vertical-PDU type places as
+    # one instead of silently taking an RU slot.
     mount = mount or item_type.default_mount or RACK_MOUNT_RU
+    if mount == RACK_MOUNT_SIDE_PDU:
+        # A blank side would render in neither rail, so the item would vanish.
+        side = side if side in ("left", "right") else "left"
+    else:
+        side = ""
     if mount == RACK_MOUNT_RU:
         hit = find_collision(db, rack, face=face, ru_start=ru_start, ru_height=max(1, height))
         if hit is not None:
@@ -584,6 +591,8 @@ def elevation_rows(rack: Rack, face: str) -> dict:
         if primary is None:
             cont = any(item.ru_start != ru for item in occupants)
         rows.append({"ru": ru, "item": primary, "continuation": cont})
-    side_left = [i for i in rack.items if i.mount == RACK_MOUNT_SIDE_PDU and i.side == "left"]
+    # Anything not explicitly on the right rail shows on the left, so older rows
+    # with a blank side stay visible rather than dropping out of both lists.
+    side_left = [i for i in rack.items if i.mount == RACK_MOUNT_SIDE_PDU and i.side != "right"]
     side_right = [i for i in rack.items if i.mount == RACK_MOUNT_SIDE_PDU and i.side == "right"]
     return {"rows": rows, "side_left": side_left, "side_right": side_right}

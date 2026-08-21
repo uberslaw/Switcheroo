@@ -464,6 +464,7 @@ def add_item(
     ru_start: int = Form(...),
     ru_height: int = Form(0),
     face: str = Form(RACK_FACE_FRONT),
+    side: str = Form(""),
     management_ip: str = Form(""),
     notes: str = Form(""),
 ):
@@ -478,7 +479,10 @@ def add_item(
             ru_start=ru_start,
             ru_height=ru_height or None,
             face=face,
-            mount=RACK_MOUNT_RU,
+            # Blank lets the catalog type decide, so a vertical PDU type is
+            # placed on a rail rather than forced into an RU slot.
+            mount="",
+            side=side,
             management_ip=management_ip,
             notes=notes,
         )
