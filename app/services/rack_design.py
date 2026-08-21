@@ -106,6 +106,7 @@ def get_site(db: Session, site_id: int) -> RackSite:
             .selectinload(RackItem.item_type)
             .selectinload(RackItemType.category)
         )
+        .execution_options(populate_existing=True)
     )
     if site is None:
         raise HTTPException(status_code=404, detail="Site not found")
@@ -120,6 +121,7 @@ def get_rack(db: Session, rack_id: int) -> Rack:
             selectinload(Rack.site),
             selectinload(Rack.items).selectinload(RackItem.item_type).selectinload(RackItemType.category),
         )
+        .execution_options(populate_existing=True)
     )
     if rack is None:
         raise HTTPException(status_code=404, detail="Rack not found")
@@ -158,7 +160,10 @@ def find_collision(db: Session, rack: Rack, *, face: str, ru_start: int, ru_heig
     bottom = ru_start - ru_height + 1
     if bottom < 1 or ru_start > rack.ru_height:
         raise HTTPException(status_code=400, detail="Item does not fit in rack RU range")
-    for item in rack.items:
+    items = list(
+        db.scalars(select(RackItem).where(RackItem.rack_id == rack.id)).all()
+    )
+    for item in items:
         if ignore_id is not None and item.id == ignore_id:
             continue
         if item.mount != RACK_MOUNT_RU:

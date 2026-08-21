@@ -54,36 +54,52 @@ def test_elevation_rows_top_is_high_ru(seeded_db):
 
 
 def test_place_and_move_item(seeded_db):
-    rack = seeded_db.scalar(select(Rack).where(Rack.name == "FDR L26"))
+    from fastapi import HTTPException
+
+    site = seeded_db.scalar(select(RackSite).where(RackSite.name == "Brisbane Albert St"))
+    assert site is not None
+    rack = Rack(
+        site_id=site.id,
+        name="Test empty rack",
+        floor="L99",
+        room="Lab",
+        ru_height=10,
+        sort_order=999,
+    )
+    seeded_db.add(rack)
+    seeded_db.flush()
     blank = seeded_db.scalar(select(RackItemType).where(RackItemType.name == "Blanking - Spare"))
-    assert rack is not None and blank is not None
-    # find an empty RU near the middle of blanking zone if possible
-    elev = rd.elevation_rows(rd.get_rack(seeded_db, rack.id), RACK_FACE_FRONT)
-    empty = next((r["ru"] for r in elev["rows"] if r["item"] is None and not r["continuation"]), None)
-    # clear one blanking cell by deleting an item first if needed
-    if empty is None:
-        victim = next(i for i in rack.items if "Blanking" in (i.name or ""))
-        empty = victim.ru_start
-        seeded_db.delete(victim)
-        seeded_db.flush()
-        rack = rd.get_rack(seeded_db, rack.id)
+    assert blank is not None
     item = rd.place_item(
         seeded_db,
         rack,
         item_type_id=blank.id,
         name="Test blank",
-        ru_start=empty,
+        ru_start=8,
+        ru_height=2,
+        face=RACK_FACE_FRONT,
+    )
+    seeded_db.flush()
+    assert item.ru_start == 8
+    assert item.ru_end == 7
+    rd.move_item(seeded_db, item, ru_start=5)
+    assert item.ru_start == 5
+    assert item.ru_end == 4
+    other = rd.place_item(
+        seeded_db,
+        rack,
+        item_type_id=blank.id,
+        name="Blocker",
+        ru_start=10,
         ru_height=1,
         face=RACK_FACE_FRONT,
     )
     seeded_db.flush()
-    # move down one RU if free
-    target = empty - 1
-    if target >= 1:
-        hit = rd.find_collision(seeded_db, rack, face=RACK_FACE_FRONT, ru_start=target, ru_height=1, ignore_id=item.id)
-        if hit is None:
-            rd.move_item(seeded_db, item, ru_start=target)
-            assert item.ru_start == target
+    try:
+        rd.move_item(seeded_db, other, ru_start=5)
+        raise AssertionError("expected collision")
+    except HTTPException as exc:
+        assert "Collides" in str(exc.detail)
 
 
 def test_cs_can_view_racks(cs_client, seeded_db):
