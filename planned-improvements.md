@@ -2,18 +2,22 @@
 
 What is deliberately **not** in Rack Design v1, grouped so the next piece of work can be picked off the top. v1 is: import the Albert St workbook, render front/back elevations with document RU numbering, and place/move/edit gear from a catalog.
 
-## Verify before building anything else
-
-- **Look at the rendered elevations in a browser.** The tests assert status codes, RU ordering, and permission gates — they do not assert that the layout *looks* right. The RU column uses `rowspan` for multi-U gear with vertical PDUs floated beside it, which is the most likely thing to look wrong on first sight (a tall UPS or a NetApp pair mis-spanning). Compare `/racks/sites/1` against the workbook sheet side by side before trusting the elevations.
-
 ## Known gaps in v1 (small, sharp)
 
-- **Vertical PDUs are read-only.** They import from the FDR sheets and render beside the RU column, but the edit list filters to RU-mounted items (`app/templates/racks/elevation.html`), so a side PDU cannot be renamed, moved between left/right, or removed from the UI. The service layer already supports the mount type.
-- **Moving gear front↔back is not exposed.** `move_item` accepts a face, but the move form posts the face you are currently viewing, so a front item can only be moved within the front. Needs a face selector on the move form.
-- **Catalog entries can be added but not edited or removed.** A typo in an item type name is permanent from the UI. Deleting needs a guard for types that are already placed (`RackItem.item_type_id` is `ondelete=RESTRICT`).
-- **Racks cannot be reordered.** `Rack.sort_order` decides left-to-right position and is set on create; there is no UI to shuffle racks within a room.
-- **Sites cannot be renamed or deleted.** Only created.
 - **Air gaps are implicit.** An empty RU renders as a dashed cell. There is no explicit "air gap" item you can name or annotate, which the Albert St sheets sometimes do want (deliberate thermal gaps versus merely unused RU).
+- **No drag-and-drop.** A move is a form with a target top RU. Dragging an RU cell would read closer to how people use an elevation.
+- **Re-import is all or nothing.** "Re-import from workbook" rebuilds a whole site and discards layout edits. There is no per-rack re-import and no diff/preview of what would change.
+
+## Done since the first pass
+
+Verified in a browser, not just by tests:
+
+- RU rows are a fixed height, so labels stay aligned and side-by-side racks share one RU baseline. Previously racks drifted up to ~100px out of step, because each rack is its own table and row height followed cell content.
+- Imported blanking, spare, shelves, cable management and reserve rows stay 1 RU each. They used to merge into a single 27U blank, so placing one server meant deleting the whole block.
+- Vertical PDUs are editable — rename, swap rail, remove — and can never take an RU slot.
+- Moves take an explicit face, and no longer silently flip an item's face to whichever side you were viewing.
+- Catalog types can be renamed, retuned and deleted, with deletion refused while instances exist.
+- Racks reorder left to right; sites rename, and delete only once empty.
 
 ## Phase 2 (bigger, previously agreed)
 
