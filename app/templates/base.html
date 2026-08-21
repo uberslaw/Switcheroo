@@ -60,6 +60,7 @@
 
   <footer class="foot">
     <span>Internal use. Writes require Networks approval.</span>
+    {% if user %}<span><a href="/help">Help</a></span>{% endif %}
     <span>Logs: data/switcheroo.log</span>
     <span>Driver: {{ settings.driver }}</span>
   </footer>

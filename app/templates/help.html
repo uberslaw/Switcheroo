@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Help · Switcheroo{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>Using Switcheroo</h1>
+    <p class="muted">Short version for Client Services and Networks. Full setup notes live in the repo README.</p>
+  </div>
+</div>
+
+<section class="panel help-block">
+  <h2>Finding a port</h2>
+  <p>Open <a href="/">Switches</a>, pick a stack member, then click a port on the faceplate to fill the detail pane. Up/down is polled every {{ interval }}s; VLAN, MAC, IP, and ISE refresh daily or when you ask for a detail refresh (there is a {{ cooldown }}s cooldown per switch so we do not hammer a box).</p>
+</section>
+
+<section class="panel help-block">
+  <h2>Requesting a change</h2>
+  <p>From the port pane you can request a <strong>VLAN change</strong>, a <strong>bounce</strong>, or a <strong>no-shutdown</strong>. VLAN changes need a reason — it goes on the ticket. Nothing is written to a switch until Networks approves it, unless an auto-approve policy matches. Track your own requests on <a href="/requests">Requests</a>.</p>
+</section>
+
+<section class="panel help-block">
+  <h2>Something is broken — collect a diagnostic</h2>
+  <p>If a poll, a switch write, or a ticket fails and the reason is not obvious, turn on step tracing before you retry:</p>
+  <ol>
+    <li>Open <strong>Launch Control</strong> on the Switcheroo host (<code>scripts\Switcheroo-LaunchControl.cmd</code>).</li>
+    <li>Click <strong>Diagnostics ON</strong>. No restart is needed — it takes effect within one poll cycle.</li>
+    <li>Reproduce the failure in the website.</li>
+    <li>Click <strong>Open diagnostics.log</strong> and send the last lines, or attach <code>{{ data_dir }}\diagnostics.log</code>.</li>
+  </ol>
+  <p class="muted">Each traced hop logs <code>begin</code>, then <code>ok</code> or <code>fail</code> with elapsed milliseconds, so the log shows which hop died (for example <code>cisco.restconf fail ... error=ConnectTimeout</code>) rather than just a stack trace. Passwords and webhook URLs are redacted. Turn <strong>Diagnostics OFF</strong> when you are done — DEBUG logging is noisy.</p>
+</section>
+
+{% if user.role == 'networks' %}
+<section class="panel help-block">
+  <h2>Networks only</h2>
+  <p><a href="/admin/approvals">Approvals</a> is the write queue. <a href="/admin/policies">Policies</a> controls auto-approve by global, office, and requestor. <a href="/admin/inventory">Inventory</a> adds switches and renames stacks. <a href="/admin/permissions">Access</a> holds the CS grant table.</p>
+</section>
+{% endif %}
+{% endblock %}

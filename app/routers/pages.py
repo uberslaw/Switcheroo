@@ -614,6 +614,19 @@ def export_switch_xlsx(
     )
 
 
+@router.get("/help")
+def help_page(request: Request, db: Session = Depends(get_db), user: User = Depends(_current_user)):
+    settings = get_settings()
+    return render(
+        request,
+        "help.html",
+        user=user,
+        interval=settings.status_poll_interval,
+        cooldown=settings.on_demand_cooldown,
+        data_dir=settings.data_dir,
+    )
+
+
 @router.get("/requests")
 def review_requests(
     request: Request,

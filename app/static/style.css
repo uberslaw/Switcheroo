@@ -989,3 +989,15 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
   box-shadow: 0 0 6px #8cff6a, 0 0 0 2px #c9e07b;
 }
 .avail-uplink, .avail-faulty, .avail-shut { opacity: 0.55; }
+
+.help-block { max-width: 70ch; }
+.help-block h2 { margin-top: 0; font-size: 1rem; }
+.help-block p { line-height: 1.5; }
+.help-block ol { margin: 0.5rem 0 0.5rem 1.2rem; line-height: 1.6; }
+.help-block code {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  background: #0c0e0a;
+  border: 1px solid var(--line);
+  padding: 0.05rem 0.25rem;
+}
