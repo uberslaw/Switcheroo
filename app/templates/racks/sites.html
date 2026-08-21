@@ -29,7 +29,8 @@
 </section>
 {% endif %}
 
-{% if user.role == 'networks' %}
-<p class="muted" style="margin-top:1.25rem"><a href="/admin/rack-permissions">Manage rack permissions</a></p>
-{% endif %}
+<p class="muted" style="margin-top:1.25rem">
+  <a href="/racks/catalog">Rack catalog</a>
+  {%- if user.role == 'networks' %} · <a href="/admin/rack-permissions">Manage rack permissions</a>{% endif %}
+</p>
 {% endblock %}

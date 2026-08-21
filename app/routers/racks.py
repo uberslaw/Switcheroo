@@ -15,6 +15,8 @@ from app.models import (
     RACK_FACE_FRONT,
     RACK_MOUNT_RU,
     RackItem,
+    RackItemCategory,
+    RackItemType,
     User,
 )
 from app.services import rack_design as rd
@@ -146,6 +148,28 @@ def site_detail(
     )
 
 
+@router.get("/catalog")
+def catalog_page(request: Request, db: Session = Depends(get_db), user: User = Depends(_user)):
+    """Declared before /{rack_id} so "catalog" is not parsed as a rack id."""
+    rd.require_cap(db, user, RACK_CAP_VIEW)
+    caps = rd.user_capabilities(db, user)
+    catalog = rd.catalog_tree(db)
+    usage = {}
+    for category in catalog:
+        for item_type in category.types:
+            usage[item_type.id] = rd.placed_count(db, item_type)
+    return render(
+        request,
+        "racks/catalog.html",
+        user=user,
+        catalog=catalog,
+        usage=usage,
+        silhouettes=rd.SILHOUETTES,
+        caps=caps,
+        can_manage_catalog=RACK_CAP_MANAGE_CATALOG in caps,
+    )
+
+
 @router.get("/{rack_id}")
 def rack_detail(
     rack_id: int,
@@ -226,6 +250,90 @@ def create_item_type(
         )
         db.commit()
         flash(request, f"Added {item_type.name} to the catalog.", "ok")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse(back_to, status_code=303)
+
+
+@router.post("/catalog/types/{type_id}/update")
+def update_item_type(
+    type_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+    name: str = Form(...),
+    default_ru_height: int = Form(1),
+    default_face: str = Form(RACK_FACE_FRONT),
+    default_network_ports: int = Form(0),
+    default_power_ports: int = Form(0),
+    back_to: str = Form("/racks/catalog"),
+):
+    rd.require_cap(db, user, RACK_CAP_MANAGE_CATALOG)
+    item_type = db.get(RackItemType, type_id)
+    if item_type is None:
+        flash(request, "Item type not found.", "error")
+        return RedirectResponse(back_to, status_code=303)
+    try:
+        rd.update_item_type(
+            db,
+            item_type,
+            name=name,
+            default_ru_height=default_ru_height,
+            default_face=default_face,
+            default_network_ports=default_network_ports,
+            default_power_ports=default_power_ports,
+        )
+        db.commit()
+        flash(request, "Item type updated.", "ok")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse(back_to, status_code=303)
+
+
+@router.post("/catalog/types/{type_id}/delete")
+def delete_item_type(
+    type_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+    back_to: str = Form("/racks/catalog"),
+):
+    rd.require_cap(db, user, RACK_CAP_MANAGE_CATALOG)
+    item_type = db.get(RackItemType, type_id)
+    if item_type is None:
+        flash(request, "Item type not found.", "error")
+        return RedirectResponse(back_to, status_code=303)
+    name = item_type.name
+    try:
+        rd.delete_item_type(db, item_type)
+        db.commit()
+        flash(request, f"Removed {name} from the catalog.", "ok")
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        flash(request, str(getattr(exc, "detail", None) or exc), "error")
+    return RedirectResponse(back_to, status_code=303)
+
+
+@router.post("/catalog/categories/{category_id}/delete")
+def delete_category(
+    category_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_user),
+    back_to: str = Form("/racks/catalog"),
+):
+    rd.require_cap(db, user, RACK_CAP_MANAGE_CATALOG)
+    category = db.get(RackItemCategory, category_id)
+    if category is None:
+        flash(request, "Category not found.", "error")
+        return RedirectResponse(back_to, status_code=303)
+    name = category.name
+    try:
+        rd.delete_category(db, category)
+        db.commit()
+        flash(request, f"Removed category {name}.", "ok")
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         flash(request, str(getattr(exc, "detail", None) or exc), "error")

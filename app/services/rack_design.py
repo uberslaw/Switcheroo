@@ -301,6 +301,78 @@ def create_item_type(
     return item_type
 
 
+def update_item_type(
+    db: Session,
+    item_type: RackItemType,
+    *,
+    name: str | None = None,
+    default_ru_height: int | None = None,
+    default_face: str | None = None,
+    default_network_ports: int | None = None,
+    default_power_ports: int | None = None,
+    notes: str | None = None,
+) -> RackItemType:
+    if name is not None:
+        clean = name.strip()
+        if not clean:
+            raise HTTPException(status_code=400, detail="Item type name is required")
+        clash = db.scalar(
+            select(RackItemType).where(
+                RackItemType.category_id == item_type.category_id,
+                RackItemType.name == clean,
+                RackItemType.id != item_type.id,
+            )
+        )
+        if clash is not None:
+            raise HTTPException(status_code=400, detail=f"That category already has {clean}")
+        item_type.name = clean
+    if default_ru_height is not None and item_type.default_mount == RACK_MOUNT_RU:
+        if not 1 <= default_ru_height <= 100:
+            raise HTTPException(status_code=400, detail="Default height must be between 1 and 100 RU")
+        item_type.default_ru_height = default_ru_height
+    if default_face is not None:
+        if default_face not in (RACK_FACE_FRONT, RACK_FACE_BACK, RACK_FACE_BOTH):
+            raise HTTPException(status_code=400, detail="Face must be front, back or both")
+        item_type.default_face = default_face
+    if default_network_ports is not None:
+        item_type.default_network_ports = max(0, default_network_ports)
+    if default_power_ports is not None:
+        item_type.default_power_ports = max(0, default_power_ports)
+    if notes is not None:
+        item_type.notes = notes.strip()
+    db.flush()
+    return item_type
+
+
+def placed_count(db: Session, item_type: RackItemType) -> int:
+    return db.scalar(
+        select(func.count(RackItem.id)).where(RackItem.item_type_id == item_type.id)
+    ) or 0
+
+
+def delete_item_type(db: Session, item_type: RackItemType) -> None:
+    """Refuse while instances exist; RackItem.item_type_id is RESTRICT."""
+    placed = placed_count(db, item_type)
+    if placed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{item_type.name} is placed on {placed} rack slot{'s' if placed != 1 else ''} — remove those first",
+        )
+    db.delete(item_type)
+    db.flush()
+
+
+def delete_category(db: Session, category: RackItemCategory) -> None:
+    types = list(db.scalars(select(RackItemType).where(RackItemType.category_id == category.id)).all())
+    if types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{category.name} still holds {len(types)} item type{'s' if len(types) != 1 else ''}",
+        )
+    db.delete(category)
+    db.flush()
+
+
 def catalog_tree(db: Session) -> list[RackItemCategory]:
     return list(
         db.scalars(

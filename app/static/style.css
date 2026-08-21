@@ -1264,6 +1264,13 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
   font-size: 0.82rem;
   color: var(--muted);
 }
+.catalog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.catalog-head h2 { margin: 0 0 0.4rem; font-size: 1rem; }
 .reimport-form {
   display: flex;
   align-items: center;

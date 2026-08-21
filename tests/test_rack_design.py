@@ -337,6 +337,69 @@ def test_cs_can_edit_layout_but_not_create_racks(cs_client, seeded_db):
     assert "Rack settings" not in page.text
 
 
+def test_catalog_page_lists_types_with_usage(networks_client, seeded_db):
+    page = networks_client.get("/racks/catalog")
+    assert page.status_code == 200
+    assert "Rack catalog" in page.text
+    assert "Blanking - Spare" in page.text
+
+
+def test_cannot_delete_placed_item_type(seeded_db):
+    from fastapi import HTTPException
+
+    blank = seeded_db.scalar(select(RackItemType).where(RackItemType.name == "Blanking - Spare"))
+    assert rd.placed_count(seeded_db, blank) > 0
+    try:
+        rd.delete_item_type(seeded_db, blank)
+        raise AssertionError("expected refusal")
+    except HTTPException as exc:
+        assert "is placed on" in str(exc.detail)
+    assert seeded_db.scalar(select(RackItemType).where(RackItemType.id == blank.id)) is not None
+
+
+def test_can_delete_unused_item_type(seeded_db):
+    category = seeded_db.scalar(select(RackItemCategory).where(RackItemCategory.name == "Server"))
+    made = rd.create_item_type(seeded_db, category_id=category.id, name="Temp unused type")
+    seeded_db.flush()
+    assert rd.placed_count(seeded_db, made) == 0
+    rd.delete_item_type(seeded_db, made)
+    seeded_db.flush()
+    assert seeded_db.scalar(select(RackItemType).where(RackItemType.name == "Temp unused type")) is None
+
+
+def test_rename_item_type_rejects_duplicate(seeded_db):
+    from fastapi import HTTPException
+
+    category = seeded_db.scalar(select(RackItemCategory).where(RackItemCategory.name == "Server"))
+    first = rd.create_item_type(seeded_db, category_id=category.id, name="Type A")
+    second = rd.create_item_type(seeded_db, category_id=category.id, name="Type B")
+    seeded_db.flush()
+    rd.update_item_type(seeded_db, first, name="Type A renamed")
+    assert first.name == "Type A renamed"
+    try:
+        rd.update_item_type(seeded_db, second, name="Type A renamed")
+        raise AssertionError("expected duplicate refusal")
+    except HTTPException as exc:
+        assert "already has" in str(exc.detail)
+
+
+def test_cannot_delete_category_with_types(seeded_db):
+    from fastapi import HTTPException
+
+    category = seeded_db.scalar(select(RackItemCategory).where(RackItemCategory.name == "Switch"))
+    try:
+        rd.delete_category(seeded_db, category)
+        raise AssertionError("expected refusal")
+    except HTTPException as exc:
+        assert "still holds" in str(exc.detail)
+
+
+def test_cs_cannot_manage_catalog(cs_client, seeded_db):
+    blank = seeded_db.scalar(select(RackItemType).where(RackItemType.name == "Blanking - Spare"))
+    denied = cs_client.post(f"/racks/catalog/types/{blank.id}/delete", follow_redirects=False)
+    assert denied.status_code == 403
+
+
 def test_networks_rack_permissions_page(networks_client, seeded_db):
     r = networks_client.get("/admin/rack-permissions")
     assert r.status_code == 200
