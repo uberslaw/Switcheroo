@@ -25,7 +25,7 @@ Do **not** use this skill to write exploits, attack playbooks, or "prove it is v
 1. Read `docs/security.md` and this skill. Treat the human-facing brief as the source of truth for Cyber; keep it in sync with code.
 2. Prefer **fail-fast at startup** (`app/prereq.py`) over silent insecure defaults.
 3. Every new control needs: code, a test in `tests/test_security.py` (or a focused sibling), an `.env.example` knob if configurable, and a line in `docs/security.md`.
-4. Lab convenience stays on loopback with the documented lab key. Shared deploy uses `SWITCHEROO_REQUIRE_HARDENED=true`, which must **refuse** to start until secrets, HTTPS cookies, allowed hosts, and a non-lab first user are in place.
+4. Lab convenience may bind the LAN (`0.0.0.0`) with the documented lab key — warn, do not refuse. Shared/production deploy uses `SWITCHEROO_REQUIRE_HARDENED=true`, which must **refuse** to start until secrets, HTTPS cookies, allowed hosts, and a non-lab first user are in place.
 5. After changing hardening, run `python3 -m pytest --timeout=30 --timeout-method=thread`.
 6. Keep the in-app **Help → Security checklist** (`app/security_checklist.py`, `/help/security`) in sync: product items stay `done`, host items read live settings, residual items stay `open`. Do not put secret values in item details.
 
@@ -35,7 +35,7 @@ Do not re-implement these. Extend them if they are incomplete.
 
 | Control | Where |
 | --- | --- |
-| Loopback bind; refuse `0.0.0.0` with the lab session key | `app/prereq.py`, `SWITCHEROO_HOST` |
+| Loopback bind by default; LAN `0.0.0.0` allowed in lab; lab key refused only when `SWITCHEROO_REQUIRE_HARDENED` | `app/prereq.py`, `SWITCHEROO_HOST` |
 | FastAPI `/docs` and `/redoc` off | `app/main.py` |
 | Session cookie HttpOnly, SameSite=Lax, optional Secure, 8h max-age | `SessionMiddleware` in `app/main.py` |
 | Session ID rotated on login (clear then set `user_id`) | `app/routers/pages.py` |

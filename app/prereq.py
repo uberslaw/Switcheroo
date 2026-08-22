@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 import sys
 from pathlib import Path
@@ -109,11 +110,14 @@ def _check_hardening(settings: Settings) -> None:
 
     lab_secret = settings.secret_key == LAB_SECRET_KEY
     if settings.bind_is_all_interfaces and lab_secret and not settings.testing:
-        raise PrerequisiteError(
-            "Refusing SWITCHEROO_HOST=0.0.0.0 (or ::) with the lab SWITCHEROO_SECRET_KEY. "
-            "Set a long random SWITCHEROO_SECRET_KEY before binding beyond loopback. "
+        msg = (
+            "SWITCHEROO_HOST binds all interfaces with the lab SWITCHEROO_SECRET_KEY. "
+            "Allowed in lab mode for a LAN host. Set a long random SWITCHEROO_SECRET_KEY "
+            "and SWITCHEROO_REQUIRE_HARDENED=true before a shared/production host. "
             "See docs/security.md."
         )
+        print(msg, file=sys.stderr)
+        logging.getLogger("switcheroo").warning(msg)
     if not settings.require_hardened:
         return
     if lab_secret or len(settings.secret_key) < 32:

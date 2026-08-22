@@ -6,7 +6,7 @@ import sys
 
 import uvicorn
 
-from app.config import get_settings
+from app.config import LAB_SECRET_KEY, get_settings
 from app.diagnostics import desired_log_level
 from app.prereq import check_prerequisites
 
@@ -52,9 +52,14 @@ def main() -> None:
     check_prerequisites(settings)
     if settings.bind_is_all_interfaces:
         print(
-            "WARNING: SWITCHEROO_HOST binds all interfaces. This is an internal tool. "
+            "WARNING: SWITCHEROO_HOST binds all interfaces. This is an internal LAN tool. "
             "Restrict with a host firewall or reverse proxy. Do not expose to the internet."
         )
+        if settings.secret_key == LAB_SECRET_KEY:
+            print(
+                "WARNING: Lab SWITCHEROO_SECRET_KEY is still in use. Fine for a LAN lab. "
+                "Set SWITCHEROO_REQUIRE_HARDENED=true (and a random secret) before production."
+            )
     print(f"Switcheroo listening on http://{settings.host}:{settings.port}")
     print(f"Logs: {settings.log_file}")
     if settings.show_lab_credentials:

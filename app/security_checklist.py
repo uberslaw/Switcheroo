@@ -88,7 +88,8 @@ def _product_section() -> CheckSection:
         CheckItem(
             "bind-default",
             "Loopback bind by default",
-            "First run listens on 127.0.0.1. Binding 0.0.0.0 with the lab session key is refused at startup.",
+            "First run listens on 127.0.0.1. LAN bind (0.0.0.0) is allowed in lab mode. "
+            "SWITCHEROO_REQUIRE_HARDENED=true refuses the lab session key.",
             "done",
         ),
         CheckItem(

@@ -125,14 +125,13 @@ def test_login_rate_limit_locks_out(client, monkeypatch):
     reset_login_failures_for_tests()
 
 
-def test_refuses_open_bind_with_lab_secret(monkeypatch):
+def test_lab_allows_open_bind_with_lab_secret(monkeypatch):
     monkeypatch.setenv("SWITCHEROO_TESTING", "0")
     monkeypatch.setenv("SWITCHEROO_HOST", "0.0.0.0")
     monkeypatch.setenv("SWITCHEROO_SECRET_KEY", LAB_SECRET_KEY)
     monkeypatch.setenv("SWITCHEROO_REQUIRE_HARDENED", "false")
     settings = get_settings()
-    with pytest.raises(PrerequisiteError, match="0.0.0.0"):
-        check_prerequisites(settings)
+    check_prerequisites(settings)
 
 
 def test_require_hardened_rejects_lab_secret(monkeypatch):

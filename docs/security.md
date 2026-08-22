@@ -8,7 +8,7 @@ Cursor agents follow `.cursor/skills/hardening/SKILL.md` so this brief and the a
 
 | Control | Default | What it does |
 | --- | --- | --- |
-| Bind address | `127.0.0.1:8080` | First run is loopback only. `0.0.0.0` is refused unless `SWITCHEROO_SECRET_KEY` is no longer the lab default. |
+| Bind address | `127.0.0.1:8080` | First-run default is loopback. LAN `0.0.0.0` is allowed in lab mode (warning only). `SWITCHEROO_REQUIRE_HARDENED=true` refuses the lab session key. |
 | No public API docs | `docs_url=None` | FastAPI `/docs` and `/redoc` are off. |
 | Auth on pages | Session cookie | Unauthenticated users are sent to `/login`. CS cannot approve writes. Networks-only routes return 403. |
 | CS data scope | Permission table | CS only sees switches they are granted. |
@@ -101,5 +101,5 @@ SWITCHEROO_TRUST_X_FORWARDED_FOR=false
 - **SQLite file theft** — `enc:v1:` device passwords are useless without `SWITCHEROO_DATA_KEY`; user hashes are not reversible but can be brute-forced if the file leaks. Protect `data\` and `.env` with ACLs / disk encryption.
 - **Networks can set any management IP** — that role is trusted to talk to switches (SSRF-shaped by design).
 - **CSRF JS assist** — forms without a hidden field still work in a real browser because `app.js` injects the token; TestClient does not run JS, so automated tests keep CSRF off unless a test turns it on.
-- **Lab first-run** remains convenient on loopback with documented lab passwords. That mode is **not** a shared deploy.
+- **Lab mode** remains convenient (loopback or LAN bind, documented lab passwords). Startup enforcement of secrets/TLS is opt-in via `SWITCHEROO_REQUIRE_HARDENED`. Lab mode is **not** a shared/production deploy.
 - **Hardened mode does not scrub an existing lab database** — change published passwords if the file was seeded before `REQUIRE_HARDENED` was turned on.
