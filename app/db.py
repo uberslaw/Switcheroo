@@ -111,6 +111,23 @@ def _migrate_sqlite() -> None:
         sw_names = {row[1] for row in sw_rows}
         if sw_names and "monitoring_enabled" not in sw_names:
             conn.execute(text("ALTER TABLE switches ADD COLUMN monitoring_enabled INTEGER DEFAULT 1"))
+        rack_rows = conn.execute(text("PRAGMA table_info(racks)")).fetchall()
+        rack_names = {row[1] for row in rack_rows}
+        rack_alters = {
+            "rack_room_id": "INTEGER",
+            "width_mm": "INTEGER DEFAULT 600",
+            "depth_mm": "INTEGER DEFAULT 1000",
+            "plinth_mm": "INTEGER DEFAULT 100",
+            "roof_mm": "INTEGER DEFAULT 0",
+            "pos_x_mm": "INTEGER DEFAULT 0",
+            "pos_y_mm": "INTEGER DEFAULT 0",
+            "rotation_deg": "INTEGER DEFAULT 0",
+            "cable_entry": "VARCHAR(16) DEFAULT 'top'",
+        }
+        if rack_names:
+            for col, typ in rack_alters.items():
+                if col not in rack_names:
+                    conn.execute(text(f"ALTER TABLE racks ADD COLUMN {col} {typ}"))
     _encrypt_legacy_switch_passwords()
 
 

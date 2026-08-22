@@ -98,41 +98,38 @@ modelled rather than asked about:
   and the front/rear note matters because the mounted face decides which side
   of the shell the cable leaves from.
 
-### Open questions before building
+### Decisions (settled)
 
-**1. Units.** Store millimetres as integers throughout, display metres to 2 dp?
-Millimetres avoid float drift, and rack and cabinet datasheets are already in
-mm. Cable is bought in metres, so the display and any ordering output wants
-metres. Two follow-ons: should an ordering figure round up to the next 0.5 m
-or whole metre, and does any US-sourced kit need inch entry (a 19" rack is
-482.6 mm, 1U is 1.75")? Cheap to settle now, invasive later, because it is the
-storage type.
+**1. Millimetres everywhere.** Stored as integers, displayed as a plain number
+with `mm` appended. No metre conversion anywhere, so there is one unit in the
+model, in the UI, and in the maths.
 
-**2. Containment: assumed rectilinear, or explicit tray runs?** Three levels:
-assume right-angle routing between two points, which needs no data entry but
-ignores where tray actually goes; model every tray segment as a graph and
-pathfind along it, which is accurate but means drawing all containment per
-room; or model just the overhead spine that the workbook says already reaches
-each rack, and assume rectilinear from a rack up to its nearest spine point.
-The middle option looks like the sweet spot given the tray note.
+**2. Overhead spine containment.** The workbook already says tray runs
+overhead to every rack, so a room carries a tray height and the horizontal leg
+of a run happens at that height. A cable goes up from its RU to the rack's
+cable entry, up to tray height, rectilinearly across as `|dx| + |dy|`, then
+down at the far end. No per-segment tray drawing.
 
-**3. Slack policy.** Needs numbers: service loop at each termination (often
-0.3–1 m), a waste or contingency percentage (commonly 5–10%), and whether
-fibre gets more than copper, since bend radius and coiling demand more. Also
-worth deciding now: copper is cut on site, but pre-terminated fibre can only be
-bought in fixed stock lengths, so for fibre the useful output is "which stock
-length to order", not "how many metres".
+**3. Close enough, not made to measure.** The goal is the shortest cable that
+will actually reach, with a contingency percentage applied — to fibre as well
+as copper — plus an allowance per right-angle bend, since a bend consumes
+length. Nobody is ordering cable cut to the centimetre, so the output is a
+sensible minimum rather than a precise figure, and it should show its segments
+so the number can be sanity-checked.
 
-**4. 2.5D or true 3D?** Plan view with heights held as numbers (ceiling, tray,
-RU position) gets every length calculation exactly right and renders as a
-simple to-scale SVG. Real 3D adds a renderer and camera controls, and buys
-presentation value but no extra accuracy. Recommend 2.5D, leaving 3D as a
-possible viewer later.
+**4. 2.5D now, 3D left open.** Plan view for x and y with heights held as real
+numbers (ceiling, tray, plinth, RU position). Because every height is stored
+rather than implied by the drawing, a 3D view later needs no data migration.
 
-**5. Where do room dimensions come from?** Data entry is the main cost here,
-not the maths. If floor plans or CAD exist, importing beats typing. If not,
-someone measures each room once. Worth knowing before designing the entry
-screens.
+**5. Manual room entry, with floor-plan upload alongside.** Rooms can be typed
+in by hand, and a floor plan can be uploaded as a scaled underlay to place
+racks against. Albert St plans to follow.
+
+### Still to decide when the numbers are known
+
+- The actual contingency percentage and the per-bend allowance. Defaults are in
+  `app/services/rack_geometry.py` and are meant to be tuned once someone
+  measures a real run.
 
 ### Also still open from before
 

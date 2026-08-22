@@ -337,6 +337,14 @@ RACK_FACE_BOTH = "both"
 RACK_MOUNT_RU = "ru"
 RACK_MOUNT_SIDE_PDU = "side_pdu"
 
+# One rack unit. Every length in Rack Design is millimetres, stored as an
+# integer, so there is no unit conversion anywhere in the model or the maths.
+RU_MM = 44.45
+
+RACK_ENTRY_TOP = "top"
+RACK_ENTRY_BOTTOM = "bottom"
+RACK_ENTRY_BOTH = "both"
+
 
 class RackSite(Base):
     __tablename__ = "rack_sites"
@@ -347,6 +355,40 @@ class RackSite(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     racks: Mapped[list[Rack]] = relationship(back_populates="site", order_by="Rack.sort_order")
+    rooms: Mapped[list[RackRoom]] = relationship(
+        back_populates="site", cascade="all, delete-orphan", order_by="RackRoom.name"
+    )
+
+
+class RackRoom(Base):
+    """A physical room, so racks can carry a position and cable a height.
+
+    Rack.floor / Rack.room stay as free text for display; this is the measured
+    version that the plan view and the length maths need.
+    """
+
+    __tablename__ = "rack_rooms"
+    __table_args__ = (UniqueConstraint("site_id", "name", name="uq_rack_room_site_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("rack_sites.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(128), index=True)
+    floor: Mapped[str] = mapped_column(String(64), default="")
+    width_mm: Mapped[int] = mapped_column(Integer, default=0)
+    length_mm: Mapped[int] = mapped_column(Integer, default=0)
+    ceiling_height_mm: Mapped[int] = mapped_column(Integer, default=2700)
+    # Overhead tray the workbook says already reaches every rack. The horizontal
+    # leg of any run happens at this height.
+    tray_height_mm: Mapped[int] = mapped_column(Integer, default=2400)
+    # "the front of the server racks have 1 meter space" (Albert St MCR note).
+    front_clearance_mm: Mapped[int] = mapped_column(Integer, default=1000)
+    floor_plan_path: Mapped[str] = mapped_column(String(512), default="")
+    # Millimetres per plan pixel, from calibrating the uploaded plan.
+    floor_plan_scale: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    site: Mapped[RackSite] = relationship(back_populates="rooms")
+    racks: Mapped[list[Rack]] = relationship(back_populates="rack_room")
 
 
 class Rack(Base):
@@ -361,8 +403,35 @@ class Rack(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     notes: Mapped[str] = mapped_column(Text, default="")
 
+    # --- Physical shell (millimetres). Cable leaves the shell, not the device,
+    # so the outside dimensions are what make a run measurable. ---
+    rack_room_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("rack_rooms.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    width_mm: Mapped[int] = mapped_column(Integer, default=600)
+    depth_mm: Mapped[int] = mapped_column(Integer, default=1000)
+    # Dead height below RU1 and above the top RU.
+    plinth_mm: Mapped[int] = mapped_column(Integer, default=100)
+    roof_mm: Mapped[int] = mapped_column(Integer, default=0)
+    # Position of the rack's front-left corner within the room.
+    pos_x_mm: Mapped[int] = mapped_column(Integer, default=0)
+    pos_y_mm: Mapped[int] = mapped_column(Integer, default=0)
+    # 0 means the front faces up the plan; decides which side cable leaves from.
+    rotation_deg: Mapped[int] = mapped_column(Integer, default=0)
+    cable_entry: Mapped[str] = mapped_column(String(16), default=RACK_ENTRY_TOP)
+
     site: Mapped[RackSite] = relationship(back_populates="racks")
+    rack_room: Mapped[Optional[RackRoom]] = relationship(back_populates="racks")
     items: Mapped[list[RackItem]] = relationship(back_populates="rack", cascade="all, delete-orphan")
+
+    @property
+    def ru_span_mm(self) -> int:
+        """Height of the RU aperture itself."""
+        return int(round(self.ru_height * RU_MM))
+
+    @property
+    def external_height_mm(self) -> int:
+        return int(round(self.plinth_mm + self.ru_height * RU_MM + self.roof_mm))
 
 
 class RackItemCategory(Base):
