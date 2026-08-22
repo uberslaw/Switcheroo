@@ -83,15 +83,56 @@ A top-down plan per room, to scale, showing rack footprints, the power source
 pin, outlets, and tray runs — sitting beside the existing front-on elevation
 rather than replacing it. Clicking a rack in plan opens its elevation.
 
+### What the workbook already tells us
+
+Three things are already documented in the Albert St sheets and should be
+modelled rather than asked about:
+
+- *"Overhead cable tray going to each rack (for fiber cables)"* — containment
+  is overhead and reaches every rack, so tray height is a room property and the
+  horizontal leg of any run happens at that height.
+- *"the front of the server racks have 1 meter space"* — a clearance rule the
+  plan view can validate rather than just draw.
+- Named rack-to-rack runs such as *"Inter-rack patch (Server Rack B to Comms
+  Rack 24ports) — Rear mounted"*. These are the first real things to measure,
+  and the front/rear note matters because the mounted face decides which side
+  of the shell the cable leaves from.
+
 ### Open questions before building
 
-- Millimetres throughout, and display in metres to 2 dp? (Assumed.)
-- Draw containment explicitly as tray runs to route along, or just assume
-  rectilinear between points? Explicit tray is more accurate and much more
-  data entry.
-- Slack policy numbers: service loop per end, and waste percentage.
-- Is plan-plus-heights (2.5D) enough, or is a real 3D view wanted? 2.5D covers
-  the length maths at a fraction of the effort.
+**1. Units.** Store millimetres as integers throughout, display metres to 2 dp?
+Millimetres avoid float drift, and rack and cabinet datasheets are already in
+mm. Cable is bought in metres, so the display and any ordering output wants
+metres. Two follow-ons: should an ordering figure round up to the next 0.5 m
+or whole metre, and does any US-sourced kit need inch entry (a 19" rack is
+482.6 mm, 1U is 1.75")? Cheap to settle now, invasive later, because it is the
+storage type.
+
+**2. Containment: assumed rectilinear, or explicit tray runs?** Three levels:
+assume right-angle routing between two points, which needs no data entry but
+ignores where tray actually goes; model every tray segment as a graph and
+pathfind along it, which is accurate but means drawing all containment per
+room; or model just the overhead spine that the workbook says already reaches
+each rack, and assume rectilinear from a rack up to its nearest spine point.
+The middle option looks like the sweet spot given the tray note.
+
+**3. Slack policy.** Needs numbers: service loop at each termination (often
+0.3–1 m), a waste or contingency percentage (commonly 5–10%), and whether
+fibre gets more than copper, since bend radius and coiling demand more. Also
+worth deciding now: copper is cut on site, but pre-terminated fibre can only be
+bought in fixed stock lengths, so for fibre the useful output is "which stock
+length to order", not "how many metres".
+
+**4. 2.5D or true 3D?** Plan view with heights held as numbers (ceiling, tray,
+RU position) gets every length calculation exactly right and renders as a
+simple to-scale SVG. Real 3D adds a renderer and camera controls, and buys
+presentation value but no extra accuracy. Recommend 2.5D, leaving 3D as a
+possible viewer later.
+
+**5. Where do room dimensions come from?** Data entry is the main cost here,
+not the maths. If floor plans or CAD exist, importing beats typing. If not,
+someone measures each room once. Worth knowing before designing the entry
+screens.
 
 ### Also still open from before
 
