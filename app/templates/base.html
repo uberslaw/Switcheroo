@@ -28,6 +28,7 @@
       <a href="/admin/approvals" class="{% if '/admin/approvals' in request.url.path %}active{% endif %}">Approvals</a>
       <a href="/admin/policies" class="{% if '/admin/policies' in request.url.path %}active{% endif %}">Policies</a>
       <a href="/admin/history" class="{% if '/admin/history' in request.url.path %}active{% endif %}">History</a>
+      <a href="/admin/audit" class="{% if '/admin/audit' in request.url.path %}active{% endif %}">Audit</a>
       <a href="/admin/permissions" class="{% if '/admin/permissions' in request.url.path or '/admin/rack-permissions' in request.url.path %}active{% endif %}">Access</a>
       {% endif %}
     </nav>
@@ -35,7 +36,9 @@
       <a href="/help" class="nav-help{% if request.url.path.startswith('/help') %} active{% endif %}">Help</a>
       <span class="who-name">{{ user.display_name or user.username }}</span>
       <span class="role-pill">{{ user.role }}</span>
+      {% if not (settings.windows_auth and user.is_windows_user) %}
       <form method="post" action="/logout"><button class="btn btn-ghost" type="submit">Sign out</button></form>
+      {% endif %}
     </div>
     {% endif %}
   </header>

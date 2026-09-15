@@ -54,6 +54,7 @@ def _block_live_outbound(self, method, url, *args, **kwargs):
 httpx.Client.request = _block_live_outbound  # type: ignore[method-assign]
 
 from app.auth import hash_password
+from app.auth_windows import reset_group_resolver
 from app.db import Base, SessionLocal, engine, init_db
 from app.drivers.simulator import simulator
 from app.main import app
@@ -81,8 +82,10 @@ def _clean_db():
     if flag.exists():
         flag.unlink()
     sync_log_level()
+    reset_group_resolver()
     yield
     simulator.reset()
+    reset_group_resolver()
 
 
 @pytest.fixture

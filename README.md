@@ -15,7 +15,7 @@ This is a **lab-first v1**. Default driver is an in-process simulator so the sit
 | Privileges | **Install / Start / Stop / Restart of the Windows service** needs administrator. Preferred ops path: run **Master Launch Control as administrator once**, leave it open, then **Open Launch Control** from the card (this window inherits that token; Install runs in-process with no second UAC). Launch Control can **watch** status, PID, logs, and `/health` without admin. Admin does **not** unlock a pywin32 DLL held by a running Python service — Stop first. |
 | Network | Safe first-run default is **127.0.0.1:8080** (this machine only). For other PCs on the internal LAN set `SWITCHEROO_HOST=0.0.0.0` and allow inbound TCP 8080. No campus switches, RESTCONF, SSH, or ServiceNow are required. |
 | Data | SQLite + logs under `data\` (created at startup). The process must be able to write that folder. |
-| Auth | Local username/password. **Not Entra SSO.** Seeded lab passwords are public in this README. Each VLAN ticket also records the **Windows account of the process running Switcheroo** (`USERDOMAIN\USERNAME`). Fine for a local POC on a CS/Networks PC; a shared server would need SSO, or the field would be the service account. |
+| Auth | Lab: local username/password. Shared host: `SWITCHEROO_AUTH=windows` (IIS + AD groups — `docs/windows-auth.md`). **Not Entra SSO.** Seeded lab passwords are public in this README. Each VLAN ticket records the **signed-in user** (Windows `DOMAIN\sam` after JIT, otherwise the local username). |
 | Hardware | `SWITCHEROO_DRIVER=simulator` by default. Real 9300s need RESTCONF (preferred), SSH/Netmiko fallback, optional SNMP, and a **dedicated TACACS or local user** — never a personal login. |
 
 Lab-only defaults that must change before any shared/internal deploy:
@@ -272,12 +272,15 @@ data/           sqlite + switcheroo.log (created at runtime, not committed)
 ```
 
 Give this to Cyber: **[docs/security.md](docs/security.md)** (bind address, hashing, encrypted device secrets, CSRF, cookies, residual risk). In the running app: **Help → Security checklist**.
+Also: [windows-auth.md](docs/windows-auth.md), [runbook.md](docs/runbook.md), [architecture.md](docs/architecture.md), [data-classification.md](docs/data-classification.md), [iso27001-soa.md](docs/iso27001-soa.md) (mapping, not a certificate).
 Cursor agents: **[`.cursor/skills/hardening/SKILL.md`](.cursor/skills/hardening/SKILL.md)** (checklist of controls people usually miss).
+
+Backups: `.\scripts\Backup-Switcheroo.ps1` (SQLite backup API into `data\backups\`). Restore only after `Stop-Service Switcheroo`. `GET /ready` checks the database and poller heartbeat; `/health` stays a cheap liveness probe for Launch Control.
 
 ## Gaps (v1)
 
 - Installing the Windows service cannot be proven in un-elevated CI. On a real box run the elevated `install-service.ps1` command above; expected: service Running and `/health` ok.
-- Entra ID / SSO is not implemented (local users only).
+- Entra ID / OIDC is not implemented. Shared hosts use Windows / AD groups.
 - ServiceNow live Table API is implemented but **off** until an integration user exists. Arup incident `state` / `close_code` values are unverified.
 - Real 9300 YANG paths may need site-specific adjustment once RESTCONF is pointed at a lab switch.
 - No HTTPS terminator in-process; put one in front if you bind beyond loopback. Set `SWITCHEROO_REQUIRE_HARDENED=true` before a shared deploy (that also blocks well-known lab users on an empty database).

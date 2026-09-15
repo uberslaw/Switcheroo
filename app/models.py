@@ -10,6 +10,8 @@ from app.db import Base
 
 ROLE_CS = "cs"
 ROLE_NETWORKS = "networks"
+AUTH_LOCAL = "local"
+AUTH_WINDOWS = "windows"
 
 PORT_PURPOSES = (
     "user_desk",
@@ -51,12 +53,28 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(32), index=True)
     display_name: Mapped[str] = mapped_column(String(128), default="")
     is_active: Mapped[bool] = mapped_column(default=True)
+    auth_source: Mapped[str] = mapped_column(String(16), default=AUTH_LOCAL)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    @property
+    def is_windows_user(self) -> bool:
+        return self.auth_source == AUTH_WINDOWS or (self.password_hash or "").startswith("windows$")
 
     permissions: Mapped[list[UserSwitchPermission]] = relationship(back_populates="user")
     requests: Mapped[list[ChangeRequest]] = relationship(
         back_populates="requester", foreign_keys="ChangeRequest.requester_id"
     )
+
+
+class LoginFailure(Base):
+    """Persisted login lockout stamps so a process restart does not reset the counter."""
+
+    __tablename__ = "login_failures"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ip: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
 class Switch(Base):

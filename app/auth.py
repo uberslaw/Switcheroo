@@ -85,6 +85,9 @@ def authenticate(db: Session, username: str, password: str) -> Optional[User]:
     if user is None or not user.is_active:
         verify_password(password, _dummy_password_hash())
         return None
+    if user.is_windows_user:
+        verify_password(password, _dummy_password_hash())
+        return None
     if not verify_password(password, user.password_hash):
         return None
     return user
@@ -94,7 +97,10 @@ def user_from_request(db: Session, request: Request) -> Optional[User]:
     user_id = request.session.get("user_id")
     if not user_id:
         return None
-    return db.get(User, int(user_id))
+    user = db.get(User, int(user_id))
+    if user is None or not user.is_active:
+        return None
+    return user
 
 
 def require_user(db: Session, request: Request) -> User:

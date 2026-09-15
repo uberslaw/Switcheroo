@@ -34,7 +34,7 @@ class CSRFMiddleware(BaseHTTPMiddleware):
         if not get_settings().csrf_enabled:
             return await call_next(request)
         path = request.url.path
-        if path.startswith("/static") or path == "/health":
+        if path.startswith("/static") or path in {"/health", "/ready"}:
             return await call_next(request)
         expected = request.session.get("csrf_token")
         submitted = (request.headers.get("x-csrf-token") or request.headers.get("x-csrftoken") or "").strip()

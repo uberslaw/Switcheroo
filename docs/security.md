@@ -30,16 +30,18 @@ Do **not** put Switcheroo on the public internet. Bind `0.0.0.0` only on a firew
 
 ## Authentication
 
-- Local username/password (v1). **Not Entra ID / SSO.**
-- Passwords are stored as **scrypt** hashes (`hashlib.scrypt`, unique salt). Legacy `pbkdf2$` hashes still verify so existing lab DBs keep working.
+- Lab default is local username/password. Shared hosts can set **`SWITCHEROO_AUTH=windows`**: IIS Windows Authentication plus AD groups (`docs/windows-auth.md`). **Not Entra ID / OIDC.**
+- Local passwords are stored as **scrypt** hashes (`hashlib.scrypt`, unique salt). Legacy `pbkdf2$` hashes still verify so existing lab DBs keep working. Windows-JIT users get an unusable `windows$` marker.
 - Unknown usernames still run a dummy scrypt verify so timing does not confirm whether the account exists. Login error text is generic.
-- Session cookie: `HttpOnly`, `SameSite=Lax`, 8-hour **absolute** max age (no idle timeout). `Secure` is on when `SWITCHEROO_PUBLIC_URL` is `https://` or `SWITCHEROO_COOKIE_SECURE=true`. The session is **signed, not encrypted** — nothing secret is stored in it.
+- Session cookie: `HttpOnly`, `SameSite=Lax`, 8-hour **absolute** max age plus an **idle timeout** (`SWITCHEROO_SESSION_IDLE_SECONDS`, default 30 minutes). `Secure` is on when `SWITCHEROO_PUBLIC_URL` is `https://` or `SWITCHEROO_COOKIE_SECURE=true`. The session is **signed, not encrypted** — nothing secret is stored in it.
 - The session is cleared and rebuilt on successful login (session fixation). Logout clears it.
 - CSRF: session token required on POST when `SWITCHEROO_CSRF` is on (on by default outside tests). Browsers send it from a hidden field / `X-CSRF-Token` (HTMX).
-- Login lockout: 8 failures / 15 minutes per client IP (on by default outside tests). In-process memory only (resets on restart). `X-Forwarded-For` is **ignored** unless `SWITCHEROO_TRUST_X_FORWARDED_FOR=true` behind a trusted proxy that overwrites that header.
+- Login lockout: 8 failures / 15 minutes per client IP (on by default outside tests). Counters persist in SQLite (`login_failures`) so a restart does not reset them. `X-Forwarded-For` is **ignored** unless `SWITCHEROO_TRUST_X_FORWARDED_FOR=true` behind a trusted proxy that overwrites that header.
 - Comparison uses `hmac.compare_digest` (no early-exit on the hash).
-- Admin-created users need a password of **10+ characters**. Lab seed accounts stay short on purpose and are **not created** when `SWITCHEROO_REQUIRE_HARDENED=true`.
+- Admin-created users need a password of **10+ characters**. Networks can disable/enable users and reset local passwords under Access. The last active Networks user cannot be disabled.
+- Lab seed accounts stay short on purpose and are **not created** when `SWITCHEROO_REQUIRE_HARDENED=true`.
 - Hardened first-user: `SWITCHEROO_BOOTSTRAP_USERNAME` + `SWITCHEROO_BOOTSTRAP_PASSWORD` (12+). Startup fails if hardened mode would leave the database with nobody who can sign in. Enabling hardened on an already-seeded lab DB does **not** delete `networks` / `cs` — change those passwords.
+- Hardened mode **refuses** `SWITCHEROO_OPEN_ACCESS=true` so CS grants are enforced.
 
 ## Secrets: storage and transmission
 
@@ -62,7 +64,7 @@ Authenticated pages send `Cache-Control: no-store`. Responses also include `X-Co
 
 ## Audit log
 
-`data/audit.log` (JSON lines, `0600`) records login success/failure, logout, user creation, VLAN/bounce request create, approve, reject, and acknowledgement. It never stores passwords, tokens, or webhook URLs.
+`data/audit.log` (JSON lines, `0600`) records login success/failure (local and Windows), logout, user create/disable/enable, password reset, permission and rack-capability changes, rack layout edits, VLAN/bounce request create, approve, reject, and acknowledgement. It never stores passwords, tokens, or webhook URLs. Files rotate at 2 MB (five backups). Keep rotated files on the host for **90 days**. Networks can read the newest events under **Audit**.
 
 ## Shared / internal deploy checklist
 
@@ -76,6 +78,7 @@ Authenticated pages send `Cache-Control: no-store`. Responses also include `X-Co
 6. Keep `SWITCHEROO_HOST=127.0.0.1` and let the proxy connect locally, **or** bind `0.0.0.0` only with host firewall allowlisting the proxy.
 7. `CISCO_RESTCONF_VERIFY_TLS=true`. Dedicated TACACS user — not a personal login.
 8. ServiceNow / Teams live mode only with dedicated integration credentials.
+9. Set `SWITCHEROO_OPEN_ACCESS=false`. Schedule `scripts\Backup-Switcheroo.ps1`. Point IIS at loopback; for Windows sign-in follow `docs/windows-auth.md`.
 
 ```
 SWITCHEROO_REQUIRE_HARDENED=true
@@ -89,17 +92,22 @@ SWITCHEROO_BOOTSTRAP_PASSWORD=<12+ random, then change in Access>
 SWITCHEROO_CSRF=true
 SWITCHEROO_LOGIN_RATE_LIMIT=true
 SWITCHEROO_TRUST_X_FORWARDED_FOR=false
+SWITCHEROO_OPEN_ACCESS=false
+SWITCHEROO_AUTH=windows
+SWITCHEROO_AD_NETWORKS_GROUPS=CORP\Switcheroo-Networks
+SWITCHEROO_AD_CS_GROUPS=CORP\Switcheroo-CS
 ```
 
 ## Residual risk (honest)
 
-- **No Entra SSO** — local passwords until IAM delivers it.
+- **No Entra OIDC** — shared hosts use Windows / AD groups. Entra waits until IAM issues an app registration.
 - **No in-process HTTPS** — the reverse proxy must terminate TLS.
 - **Starlette session is signed, not encrypted** — do not put secrets in the session.
-- **No idle session timeout** — cookies live until the 8-hour max-age or logout.
-- **Login lockout is in-process memory** — not shared across workers; resets on restart.
-- **SQLite file theft** — `enc:v1:` device passwords are useless without `SWITCHEROO_DATA_KEY`; user hashes are not reversible but can be brute-forced if the file leaks. Protect `data\` and `.env` with ACLs / disk encryption.
+- **SQLite file theft** — `enc:v1:` device passwords are useless without `SWITCHEROO_DATA_KEY`; user hashes are not reversible but can be brute-forced if the file leaks. Protect `data\` and `.env` with ACLs / disk encryption. Single host + single file is the architecture; see `docs/runbook.md` for backup/restore.
 - **Networks can set any management IP** — that role is trusted to talk to switches (SSRF-shaped by design).
 - **CSRF JS assist** — forms without a hidden field still work in a real browser because `app.js` injects the token; TestClient does not run JS, so automated tests keep CSRF off unless a test turns it on.
 - **Lab mode** remains convenient (loopback or LAN bind, documented lab passwords). Startup enforcement of secrets/TLS is opt-in via `SWITCHEROO_REQUIRE_HARDENED`. Lab mode is **not** a shared/production deploy.
 - **Hardened mode does not scrub an existing lab database** — change published passwords if the file was seeded before `REQUIRE_HARDENED` was turned on.
+- **Windows Sign out** — Kerberos will re-authenticate on the next request; close the browser to switch users.
+
+Related: [windows-auth.md](windows-auth.md), [runbook.md](runbook.md), [architecture.md](architecture.md), [data-classification.md](data-classification.md), [iso27001-soa.md](iso27001-soa.md).

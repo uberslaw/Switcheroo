@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from datetime import datetime, timedelta
 
 from collections import defaultdict
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.audit import audit
 from app.auth import authenticate, require_networks, require_user, safe_next_path, user_from_request
+from app.auth_windows import apply_windows_identity
 from app.config import get_settings
 from app.csrf import ensure_csrf_token
 from app.db import get_db
@@ -169,6 +171,11 @@ def login_page(request: Request, db: Session = Depends(get_db), next: str = ""):
     dest = safe_next_path(next, "/")
     if user_from_request(db, request):
         return RedirectResponse(dest, status_code=303)
+    settings = get_settings()
+    if settings.windows_auth:
+        windows_user = apply_windows_identity(db, request)
+        if windows_user is not None:
+            return RedirectResponse(dest, status_code=303)
     return render(request, "login.html", user=None, next_path="" if dest == "/" else dest)
 
 
@@ -181,6 +188,10 @@ def login_submit(
     db: Session = Depends(get_db),
 ):
     dest = safe_next_path(next, "/")
+    settings = get_settings()
+    if settings.windows_auth and not settings.allow_local_login:
+        flash(request, "Local password sign-in is disabled. Use Windows sign-in through IIS.", "error")
+        return render(request, "login.html", user=None, next_path="" if dest == "/" else dest, status_code=403)
     ip = client_ip(request)
     if login_is_blocked(ip):
         flash(request, "Too many sign-in attempts. Try again in 15 minutes.", "error")
@@ -194,6 +205,9 @@ def login_submit(
     clear_login_failures(ip)
     request.session.clear()
     request.session["user_id"] = user.id
+    request.session["last_seen"] = time.time()
+    user.last_login_at = utcnow()
+    db.commit()
     ensure_csrf_token(request)
     audit("login_success", username=user.username, user_id=user.id, ip=ip)
     return RedirectResponse(dest, status_code=303)

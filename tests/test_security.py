@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 
 import pytest
@@ -272,8 +273,9 @@ def test_audit_log_records_login_without_password(client, seeded_db):
     assert "login_failure" in text
     assert "wrong" not in text
     assert "password" not in text
-    mode = path.stat().st_mode & 0o777
-    assert mode == 0o600
+    if os.name != "nt":
+        mode = path.stat().st_mode & 0o777
+        assert mode == 0o600
 
 
 def test_sqlite_file_mode_is_private():
@@ -286,7 +288,8 @@ def test_sqlite_file_mode_is_private():
     path = sqlite_filesystem_path(get_settings().database_url)
     assert path is not None
     assert Path(path).is_file()
-    assert path.stat().st_mode & 0o777 == 0o600
+    if os.name != "nt":
+        assert path.stat().st_mode & 0o777 == 0o600
 
 
 def test_login_page_hides_lab_passwords_when_hardened(client, monkeypatch):

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.audit import audit
 from app.auth import require_user
 from app.db import get_db
 from app.models import (
@@ -487,6 +488,7 @@ def add_item(
             notes=notes,
         )
         db.commit()
+        audit("rack_item_placed", actor=user.username, rack_id=rack_id, ru_start=ru_start, face=face)
         flash(request, "Item placed.", "ok")
     except Exception as exc:  # noqa: BLE001
         db.rollback()
@@ -523,6 +525,7 @@ def move_item(
             side=side or None,
         )
         db.commit()
+        audit("rack_item_moved", actor=user.username, rack_id=rack_id, item_id=item_id, ru_start=ru_start)
         flash(request, "Item moved.", "ok")
     except Exception as exc:  # noqa: BLE001
         db.rollback()
@@ -554,6 +557,7 @@ def update_item(
     item.power_ports = max(0, power_ports)
     item.notes = notes.strip()
     db.commit()
+    audit("rack_item_updated", actor=user.username, rack_id=item.rack_id, item_id=item_id)
     flash(request, "Item updated.", "ok")
     return RedirectResponse(f"/racks/{item.rack_id}?face={face}", status_code=303)
 
@@ -574,5 +578,6 @@ def delete_item(
     rack_id = item.rack_id
     db.delete(item)
     db.commit()
+    audit("rack_item_removed", actor=user.username, rack_id=rack_id, item_id=item_id)
     flash(request, "Item removed.", "ok")
     return RedirectResponse(f"/racks/{rack_id}?face={face}", status_code=303)

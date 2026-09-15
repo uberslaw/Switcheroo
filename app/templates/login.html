@@ -16,10 +16,19 @@
         <div class="brand-sub">Catalyst 9300 port desk</div>
       </div>
     </div>
-    <p class="lede">Sign in with your Switcheroo account. Client Services can view permitted switches and queue changes. Networks approves writes.</p>
+    <p class="lede">
+      {% if settings.windows_auth %}
+      Sign in with your Windows account (IIS / AD group). Client Services can view permitted switches and queue changes. Networks approves writes.
+      {% else %}
+      Sign in with your Switcheroo account. Client Services can view permitted switches and queue changes. Networks approves writes.
+      {% endif %}
+    </p>
     {% for item in flashes %}
     <div class="flash flash-{{ item.category }}">{{ item.message }}</div>
     {% endfor %}
+    {% if settings.windows_auth and not settings.allow_local_login %}
+    <p class="muted">Open this site through IIS with Windows Authentication. There is no local password form on this host.</p>
+    {% else %}
     <form method="post" action="/login" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       {% if next_path %}
@@ -33,6 +42,7 @@
       </label>
       <button class="btn btn-primary" type="submit">Sign in</button>
     </form>
+    {% endif %}
     <aside class="lab-note">
       {% if settings.show_lab_credentials %}
       <strong>Lab defaults — not production.</strong>
@@ -40,7 +50,11 @@
       and <code>cs</code> / <code>cs</code> (Client Services).
       Change these before any shared deploy.
       {% endif %}
-      Auth is local username/password; Entra SSO is not in v1.
+      {% if settings.windows_auth %}
+      Shared hosts use Windows sign-in and AD groups. See Help → Security and docs/windows-auth.md.
+      {% else %}
+      Auth is local username/password. Shared hosts can switch to Windows / AD (<code>SWITCHEROO_AUTH=windows</code>).
+      {% endif %}
     </aside>
   </div>
 </body>

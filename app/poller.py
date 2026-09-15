@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.db import SessionLocal
 from app.diagnostics import sync_log_level
 from app.models import Switch, utcnow
+from app.ready import write_poller_heartbeat
 from app.services.request_service import sync_servicenow_tickets
 from app.services.switch_service import monitored_switches, poll_switch_daily, poll_switch_status, tick_troubleshooting
 
@@ -19,6 +20,7 @@ _scheduler: BackgroundScheduler | None = None
 
 def poll_all_status() -> None:
     sync_log_level()
+    write_poller_heartbeat()
     db = SessionLocal()
     try:
         switches = monitored_switches(db)
@@ -126,6 +128,7 @@ def start_poller() -> BackgroundScheduler:
     )
     scheduler.start()
     _scheduler = scheduler
+    write_poller_heartbeat()
     log.info(
         "Poller started: status every %ss (targeted ifOperStatus), daily details at %02d:00 UTC, "
         "troubleshoot tick every %ss, ServiceNow every %ss (live=%s dry_run=%s)",

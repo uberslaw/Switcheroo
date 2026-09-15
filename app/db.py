@@ -111,6 +111,13 @@ def _migrate_sqlite() -> None:
         sw_names = {row[1] for row in sw_rows}
         if sw_names and "monitoring_enabled" not in sw_names:
             conn.execute(text("ALTER TABLE switches ADD COLUMN monitoring_enabled INTEGER DEFAULT 1"))
+        user_rows = conn.execute(text("PRAGMA table_info(users)")).fetchall()
+        user_names = {row[1] for row in user_rows}
+        if user_names:
+            if "auth_source" not in user_names:
+                conn.execute(text("ALTER TABLE users ADD COLUMN auth_source VARCHAR(16) DEFAULT 'local'"))
+            if "last_login_at" not in user_names:
+                conn.execute(text("ALTER TABLE users ADD COLUMN last_login_at DATETIME"))
         rack_rows = conn.execute(text("PRAGMA table_info(racks)")).fetchall()
         rack_names = {row[1] for row in rack_rows}
         rack_alters = {

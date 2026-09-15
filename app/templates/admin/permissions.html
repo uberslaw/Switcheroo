@@ -39,7 +39,27 @@
   <tbody>
     {% for u in users %}
     <tr>
-      <td>{{ u.username }}<div class="muted">{{ u.display_name }}</div></td>
+      <td>
+        {{ u.username }}
+        <div class="muted">{{ u.display_name }}{% if not u.is_active %} · disabled{% endif %}{% if u.is_windows_user %} · Windows{% endif %}</div>
+        <div class="user-actions">
+          {% if u.is_active %}
+          <form method="post" action="/admin/users/{{ u.id }}/disable" class="inline-vlan">
+            <button class="btn btn-small" type="submit">Disable</button>
+          </form>
+          {% else %}
+          <form method="post" action="/admin/users/{{ u.id }}/enable" class="inline-vlan">
+            <button class="btn btn-small btn-primary" type="submit">Enable</button>
+          </form>
+          {% endif %}
+          {% if not u.is_windows_user %}
+          <form method="post" action="/admin/users/{{ u.id }}/password" class="inline-vlan">
+            <input type="password" name="password" required placeholder="new password (10+)" minlength="10" autocomplete="new-password">
+            <button class="btn btn-small" type="submit">Reset</button>
+          </form>
+          {% endif %}
+        </div>
+      </td>
       <td>{{ u.role }}</td>
       {% for g in switch_groups %}
       {% for s in g.switches %}

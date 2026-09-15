@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.audit import audit
+from app.audit import audit, read_audit_events
 from app.auth import hash_password, password_meets_policy, require_networks, require_user, safe_next_path
 from app.crypto import store_secret
 from app.db import get_db
@@ -536,9 +536,11 @@ def permission_set(
     if granted == "1" and link is None:
         db.add(UserSwitchPermission(user_id=user_id, switch_id=switch_id))
         flash(request, f"Granted {target.username} access to {switch.name}.", "ok")
+        audit("permission_granted", actor=user.username, username=target.username, switch=switch.name)
     elif granted != "1" and link is not None:
         db.delete(link)
         flash(request, f"Revoked {target.username} access to {switch.name}.", "ok")
+        audit("permission_revoked", actor=user.username, username=target.username, switch=switch.name)
     db.commit()
     return RedirectResponse("/admin/permissions", status_code=303)
 
@@ -574,6 +576,96 @@ def user_create(
     audit("user_created", username=username.strip()[:64], role=role, actor=user.username)
     flash(request, f"Created user {username.strip()}.", "ok")
     return RedirectResponse("/admin/permissions", status_code=303)
+
+
+def _active_networks_count(db: Session) -> int:
+    return (
+        db.scalar(select(func.count(User.id)).where(User.role == ROLE_NETWORKS, User.is_active.is_(True))) or 0
+    )
+
+
+@router.post("/users/{user_id}/disable")
+def user_disable(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    target = db.get(User, user_id)
+    if target is None:
+        flash(request, "User not found.", "error")
+        return RedirectResponse("/admin/permissions", status_code=303)
+    if target.role == ROLE_NETWORKS and target.is_active and _active_networks_count(db) <= 1:
+        flash(request, "Cannot disable the last active Networks user.", "error")
+        return RedirectResponse("/admin/permissions", status_code=303)
+    target.is_active = False
+    db.commit()
+    audit("user_disabled", username=target.username, actor=user.username)
+    flash(request, f"Disabled {target.username}.", "ok")
+    return RedirectResponse("/admin/permissions", status_code=303)
+
+
+@router.post("/users/{user_id}/enable")
+def user_enable(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    target = db.get(User, user_id)
+    if target is None:
+        flash(request, "User not found.", "error")
+        return RedirectResponse("/admin/permissions", status_code=303)
+    target.is_active = True
+    db.commit()
+    audit("user_enabled", username=target.username, actor=user.username)
+    flash(request, f"Enabled {target.username}.", "ok")
+    return RedirectResponse("/admin/permissions", status_code=303)
+
+
+@router.post("/users/{user_id}/password")
+def user_reset_password(
+    user_id: int,
+    request: Request,
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(_admin),
+):
+    target = db.get(User, user_id)
+    if target is None:
+        flash(request, "User not found.", "error")
+        return RedirectResponse("/admin/permissions", status_code=303)
+    if target.is_windows_user:
+        flash(request, "Windows-signed-in users do not have a local password.", "error")
+        return RedirectResponse("/admin/permissions", status_code=303)
+    if not password_meets_policy(password):
+        flash(request, "Password must be at least 10 characters.", "error")
+        return RedirectResponse("/admin/permissions", status_code=303)
+    target.password_hash = hash_password(password)
+    db.commit()
+    audit("password_reset", username=target.username, actor=user.username)
+    flash(request, f"Password updated for {target.username}.", "ok")
+    return RedirectResponse("/admin/permissions", status_code=303)
+
+
+@router.get("/audit")
+def audit_log_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(_admin),
+    action: str = "",
+    limit: int = 200,
+):
+    cap = max(20, min(500, int(limit or 200)))
+    events = read_audit_events(limit=cap, action=action)
+    return render(
+        request,
+        "admin/audit.html",
+        user=user,
+        events=events,
+        action_filter=action.strip(),
+        limit=cap,
+    )
 
 
 @router.get("/rack-permissions")
@@ -614,6 +706,12 @@ def rack_permission_set(
         db.commit()
         verb = "Granted" if granted == "1" else "Revoked"
         flash(request, f"{verb} {rd.CAP_LABELS.get(capability, capability)} for {target.username}.", "ok")
+        audit(
+            "rack_permission_granted" if granted == "1" else "rack_permission_revoked",
+            actor=user.username,
+            username=target.username,
+            capability=capability,
+        )
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         flash(request, str(getattr(exc, "detail", None) or exc), "error")

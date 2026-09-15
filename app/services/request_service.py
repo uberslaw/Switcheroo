@@ -83,7 +83,7 @@ def create_request(
         from_vlan_id=port.vlan_id if request_type == REQUEST_VLAN else None,
         from_vlan_name=port.vlan_name if request_type == REQUEST_VLAN else None,
         reason=cleaned_reason or None,
-        windows_account=current_windows_account(),
+        windows_account=current_windows_account(requester),
         status=STATUS_PENDING,
     )
     db.add(req)

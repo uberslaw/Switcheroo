@@ -152,6 +152,30 @@ def _check_hardening(settings: Settings) -> None:
             "SWITCHEROO_REQUIRE_HARDENED=true requires SWITCHEROO_ALLOWED_HOSTS to include "
             f"'{public_host}' from SWITCHEROO_PUBLIC_URL. See docs/security.md."
         )
+    if settings.open_access:
+        raise PrerequisiteError(
+            "SWITCHEROO_REQUIRE_HARDENED=true requires SWITCHEROO_OPEN_ACCESS=false "
+            "so Client Services grants are enforced. Lab may leave it true."
+        )
+    if settings.windows_auth:
+        if not settings.ad_networks_groups or not settings.ad_cs_groups:
+            raise PrerequisiteError(
+                "SWITCHEROO_AUTH=windows requires SWITCHEROO_AD_NETWORKS_GROUPS and "
+                "SWITCHEROO_AD_CS_GROUPS (comma-separated DOMAIN\\Group names). "
+                "See docs/windows-auth.md."
+            )
+        if settings.bind_is_all_interfaces and not settings.trust_x_forwarded_for:
+            raise PrerequisiteError(
+                "SWITCHEROO_AUTH=windows with SWITCHEROO_REQUIRE_HARDENED=true cannot bind "
+                "all interfaces unless SWITCHEROO_TRUST_X_FORWARDED_FOR=true behind IIS "
+                "that overwrites the identity and X-Forwarded-For headers. "
+                "Bind 127.0.0.1 and let IIS proxy locally. See docs/windows-auth.md."
+            )
+        if not settings.public_url.startswith("https://"):
+            raise PrerequisiteError(
+                "SWITCHEROO_AUTH=windows with SWITCHEROO_REQUIRE_HARDENED=true requires "
+                "SWITCHEROO_PUBLIC_URL=https://… (IIS terminates TLS)."
+            )
 
 
 def _host_allowed(hostname: str, allowed: tuple[str, ...]) -> bool:

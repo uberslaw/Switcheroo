@@ -17,9 +17,12 @@ from app.diagnostics import clear_pid_file, sync_log_level, write_pid_file
 from app.logging_setup import setup_logging
 from app.poller import start_poller, stop_poller
 from app.prereq import check_prerequisites
+from app.ready import build_ready_report
 from app.routers import admin, api, pages, racks
 from app.security_headers import SecurityHeadersMiddleware
 from app.seed import ensure_hardened_users, seed
+from app.session_idle import IdleSessionMiddleware
+from app.windows_auth_middleware import WindowsAuthMiddleware
 
 log = logging.getLogger("switcheroo")
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -58,6 +61,8 @@ async def lifespan(_app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     application = FastAPI(title="Switcheroo", lifespan=lifespan, docs_url=None, redoc_url=None)
+    application.add_middleware(IdleSessionMiddleware)
+    application.add_middleware(WindowsAuthMiddleware)
     application.add_middleware(CSRFMiddleware)
     application.add_middleware(
         SessionMiddleware,
@@ -84,6 +89,10 @@ def create_app() -> FastAPI:
             "driver": settings.driver,
             "testing": settings.testing,
         }
+
+    @application.get("/ready")
+    def ready() -> dict:
+        return build_ready_report()
 
     return application
 

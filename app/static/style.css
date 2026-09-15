@@ -843,6 +843,7 @@ label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
 
 .perm-table { min-width: 100%; }
 .perm-table th { font-size: 0.72rem; white-space: nowrap; }
+.user-actions { margin-top: 0.4rem; display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
 .office-col { background: #191f14; text-align: center; }
 
 .patching-desk {

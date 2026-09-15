@@ -57,7 +57,12 @@ Do not re-implement these. Extend them if they are incomplete.
 | Python 3.12+ fail-fast; pinned `requirements.txt` including `cryptography` | `app/prereq.py` |
 | Lab users `networks`/`cs` **not** created when hardened; bootstrap env instead | `app/seed.py` |
 | SQLite / log / audit files `chmod 600` (Unix) | `app/filesec.py` |
-| Auth and approval audit log (no secrets) | `app/audit.py` |
+| Auth, permission, rack, and approval audit log (no secrets); Networks viewer | `app/audit.py`, `/admin/audit` |
+| Idle session timeout; persisted login lockout | `app/session_idle.py`, `login_failures` |
+| Windows / AD sign-in via trusted IIS header | `app/auth_windows.py`, `SWITCHEROO_AUTH=windows` |
+| Hardened refuses open CS grants | `app/prereq.py`, `SWITCHEROO_OPEN_ACCESS` |
+| SQLite backup API; `/ready` | `app/services/backup.py`, `app/ready.py` |
+| pytest + pip-audit in CI | `.github/workflows/test.yml` |
 | Admin-created passwords minimum length 10 | `app/auth.py` |
 | Login page hides lab passwords unless the lab session key is in use | `app/templates/login.html` |
 
@@ -97,16 +102,14 @@ These are honest gaps. Write them in `docs/security.md`. Do not pretend the app 
 
 | Gap | Why it stays |
 | --- | --- |
-| No Entra ID / SSO | v1 is local username/password until IAM delivers it |
+| No Entra ID / OIDC | Shared hosts use Windows / AD groups; Entra waits on IAM |
 | No in-process HTTPS | Reverse proxy terminates TLS; the app speaks HTTP on localhost |
 | Starlette session is **signed, not encrypted** | Never put secrets in `request.session` |
-| Absolute session lifetime only (default 8h), no idle timeout | Would need last-seen tracking; call out to Cyber |
-| Login lockout is in-process memory | Resets on restart; not shared across workers |
 | Networks can set `management_ip` | That role is trusted to talk to switches (SSRF-shaped by design) |
 | Argon2id not used | stdlib scrypt is acceptable; do not add a crypto library without a pin |
-| No pip-audit in CI | Operator runs `pip-audit -r requirements.txt` on a cadence |
 | CSRF JS assist | `app.js` injects the token for HTMX; tests keep CSRF off unless a test turns it on |
 | Enabling hardened does not delete existing lab users | Operator must change/delete `networks`/`cs` on an already-seeded DB |
+| Windows Sign out | Kerberos re-authenticates; close the browser to switch users |
 
 ## Adding a new control
 
@@ -151,6 +154,11 @@ SWITCHEROO_BOOTSTRAP_PASSWORD=<12+ random, then change in Access>
 SWITCHEROO_CSRF=true
 SWITCHEROO_LOGIN_RATE_LIMIT=true
 SWITCHEROO_TRUST_X_FORWARDED_FOR=false
+SWITCHEROO_OPEN_ACCESS=false
+SWITCHEROO_AUTH=windows
+SWITCHEROO_AD_NETWORKS_GROUPS=CORP\Switcheroo-Networks
+SWITCHEROO_AD_CS_GROUPS=CORP\Switcheroo-CS
+SWITCHEROO_SESSION_IDLE_SECONDS=1800
 ```
 
 Lab (loopback) may leave `REQUIRE_HARDENED=false` and `ALLOWED_HOSTS` unset (`*` — TrustedHost off). That mode is not a shared deploy.

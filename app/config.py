@@ -101,6 +101,15 @@ class Settings:
     log_level: str
     diagnostics: bool
     open_access: bool
+    auth_mode: str
+    windows_user_header: str
+    ad_networks_groups: tuple[str, ...]
+    ad_cs_groups: tuple[str, ...]
+    ad_ldap_url: str
+    ad_group_ttl_seconds: int
+    allow_local_login: bool
+    session_idle_seconds: int
+    log_json: bool
 
     @property
     def servicenow_live(self) -> bool:
@@ -128,6 +137,10 @@ class Settings:
         if not self.public_url:
             return ""
         return (urlparse(self.public_url).hostname or "").strip().lower()
+
+    @property
+    def windows_auth(self) -> bool:
+        return self.auth_mode == "windows"
 
 
 def get_settings() -> Settings:
@@ -228,7 +241,33 @@ def get_settings() -> Settings:
         # Lab default: every signed-in user sees every switch. Set false to
         # enforce the CS grant table (user_switch_permissions) again.
         open_access=_as_bool(os.getenv("SWITCHEROO_OPEN_ACCESS"), True),
+        auth_mode=_parse_auth_mode(os.getenv("SWITCHEROO_AUTH")),
+        windows_user_header=(os.getenv("SWITCHEROO_AUTH_WINDOWS_HEADER") or "X-Remote-User").strip()
+        or "X-Remote-User",
+        ad_networks_groups=_parse_csv(os.getenv("SWITCHEROO_AD_NETWORKS_GROUPS")),
+        ad_cs_groups=_parse_csv(os.getenv("SWITCHEROO_AD_CS_GROUPS")),
+        ad_ldap_url=(os.getenv("SWITCHEROO_AD_LDAP_URL") or "").strip(),
+        ad_group_ttl_seconds=max(30, min(3600, _as_int(os.getenv("SWITCHEROO_AD_GROUP_TTL_SECONDS"), 300))),
+        allow_local_login=_as_bool(
+            os.getenv("SWITCHEROO_ALLOW_LOCAL_LOGIN"),
+            default=not require_hardened,
+        ),
+        session_idle_seconds=max(0, min(86400, _as_int(os.getenv("SWITCHEROO_SESSION_IDLE_SECONDS"), 1800))),
+        log_json=_as_bool(os.getenv("SWITCHEROO_LOG_JSON"), False),
     )
+
+
+def _parse_auth_mode(raw: str | None) -> str:
+    mode = (raw or "local").strip().lower()
+    if mode not in {"local", "windows"}:
+        raise ValueError("SWITCHEROO_AUTH must be 'local' or 'windows'.")
+    return mode
+
+
+def _parse_csv(raw: str | None) -> tuple[str, ...]:
+    if not raw or not raw.strip():
+        return ()
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
 
 
 def _parse_allowed_hosts(

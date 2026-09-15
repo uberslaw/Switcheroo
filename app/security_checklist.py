@@ -119,7 +119,7 @@ def _product_section() -> CheckSection:
         CheckItem(
             "session",
             "Session cookie is HttpOnly + SameSite=Lax",
-            "Rotated on login (session fixation). Cleared on logout. Signed, not encrypted — nothing secret is stored in it. Default max age 8 hours.",
+            "Rotated on login (session fixation). Cleared on logout. Signed, not encrypted — nothing secret is stored in it. Default max age 8 hours plus an idle timeout.",
             "done",
         ),
         CheckItem(
@@ -149,7 +149,31 @@ def _product_section() -> CheckSection:
         CheckItem(
             "audit",
             "Audit log without secrets",
-            "data/audit.log records login, logout, user create, request create/approve/reject/ack. Passwords, tokens, and webhook URLs are not written.",
+            "data/audit.log records login (local and Windows), logout, user create/disable/enable, permission and rack layout changes, request create/approve/reject/ack. Networks can read it under Audit. Passwords, tokens, and webhook URLs are not written.",
+            "done",
+        ),
+        CheckItem(
+            "windows-auth",
+            "Windows / AD sign-in is available",
+            "SWITCHEROO_AUTH=windows trusts X-Remote-User only from loopback (or a known IIS proxy). AD groups map to Networks or CS. Local passwords remain for lab and break-glass.",
+            "done",
+        ),
+        CheckItem(
+            "idle-lockout",
+            "Idle timeout and persisted login lockout",
+            "Sessions expire after SWITCHEROO_SESSION_IDLE_SECONDS (default 30 minutes). Lockout counters live in SQLite so a restart does not reset them.",
+            "done",
+        ),
+        CheckItem(
+            "backup-ready",
+            "SQLite backup API and /ready",
+            "scripts/Backup-Switcheroo.ps1 uses the SQLite backup API (not a live file copy). GET /ready checks the database and poller heartbeat. /health stays a cheap liveness probe.",
+            "done",
+        ),
+        CheckItem(
+            "pip-audit-ci",
+            "pytest and pip-audit run in CI",
+            "GitHub Actions installs pins, runs the test suite, then pip-audit -r requirements.txt. Dependabot watches pip and Actions.",
             "done",
         ),
         CheckItem(
@@ -322,6 +346,24 @@ def _host_section(settings: Settings, lab_users: tuple[str, ...]) -> CheckSectio
             else "Lab passwords are printed on /login because this process still uses the lab session key. That is only for a first run on this machine.",
             "done" if not settings.show_lab_credentials else "action",
         ),
+        CheckItem(
+            "open-access",
+            "CS grants are enforced",
+            "SWITCHEROO_OPEN_ACCESS is false."
+            if not settings.open_access
+            else "SWITCHEROO_OPEN_ACCESS is true. Every signed-in user sees every switch. Set false before a shared deploy (hardened mode refuses to start otherwise).",
+            "done" if not settings.open_access else "action",
+        ),
+        CheckItem(
+            "auth-mode",
+            "Authentication mode",
+            (
+                "Windows / AD. Identity header is trusted from loopback or a known proxy."
+                if settings.windows_auth
+                else "Local username/password. Set SWITCHEROO_AUTH=windows and the AD group lists for a shared IIS host."
+            ),
+            "done" if settings.windows_auth or not settings.require_hardened else "action",
+        ),
     )
     return CheckSection(
         "host",
@@ -335,26 +377,14 @@ def _residual_section() -> CheckSection:
     items = (
         CheckItem(
             "sso",
-            "Entra ID / SSO",
-            "v1 is local username/password. IAM has to deliver SSO before this can change.",
+            "Entra ID / OIDC",
+            "Not implemented. Shared hosts use Windows Integrated Auth and AD groups. Entra is residual until IAM issues an app registration.",
             "open",
         ),
         CheckItem(
             "in-process-tls",
             "HTTPS inside the Python process",
             "The app speaks HTTP on localhost. Terminate TLS on IIS / nginx / Caddy in front.",
-            "open",
-        ),
-        CheckItem(
-            "idle-timeout",
-            "Idle session timeout",
-            "Cookies last until the absolute max age (default 8 hours) or Sign out. There is no inactivity timer yet.",
-            "open",
-        ),
-        CheckItem(
-            "lockout-memory",
-            "Lockout is in-process memory",
-            "Counters reset on restart and are not shared across workers. Fine for a single service process.",
             "open",
         ),
         CheckItem(
@@ -367,12 +397,6 @@ def _residual_section() -> CheckSection:
             "mgmt-ip",
             "Networks can set any management IP",
             "That role is trusted to talk to Catalysts. Treat it as admin-equivalent for device targeting.",
-            "open",
-        ),
-        CheckItem(
-            "pip-audit",
-            "Dependency scanning is not in CI",
-            "Pins live in requirements.txt. Run pip-audit -r requirements.txt (or the org SCA tool) before go-live and on a cadence.",
             "open",
         ),
         CheckItem(

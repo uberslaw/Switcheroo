@@ -52,25 +52,25 @@ def test_reason_and_windows_account_in_payload_and_requests(client, seeded_db, m
     req = create_request(seeded_db, cs, port, REQUEST_VLAN, vlan_id=50, reason=VLAN_REASON)
     seeded_db.commit()
     assert req.reason == VLAN_REASON
-    assert req.windows_account == r"ARUP\jsmith"
+    assert req.windows_account == "cs"
     assert req.sn_ritm_number == DRY_RUN_RITM
     assert req.sn_req_number == DRY_RUN_REQ
     payload = build_create_payload(req)
     assert "requester: cs" in payload["description"]
-    assert r"windows_account: ARUP\jsmith" in payload["description"]
+    assert "windows_account: cs" in payload["description"]
     assert f"reason: {VLAN_REASON}" in payload["description"]
     folder = Path(get_settings().data_dir) / "servicenow-dryrun"
     data = json.loads((folder / _safe_filename(req.servicenow_correlation_id)).read_text(encoding="utf-8"))
     assert data["ritm_number"] == DRY_RUN_RITM
     assert data["req_number"] == DRY_RUN_REQ
     assert VLAN_REASON in data["payload"]["description"]
-    assert r"ARUP\jsmith" in data["payload"]["description"]
+    assert "windows_account: cs" in data["payload"]["description"]
 
     client.post("/login", data={"username": "cs", "password": "cs"}, follow_redirects=False)
     page = client.get("/requests")
     assert page.status_code == 200
     assert VLAN_REASON in page.text
-    assert r"ARUP\jsmith" in page.text
+    assert "cs" in page.text
     assert "RITM-DRY-RUN" in page.text
     assert "REQ-DRY-RUN" in page.text
 
