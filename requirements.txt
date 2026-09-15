@@ -13,4 +13,4 @@ pytest==9.1.1
 pytest-timeout==2.4.0
 openpyxl==3.1.5
 netmiko==4.6.0
-pysnmp==7.1.21
+pysnmp==7.1.29
